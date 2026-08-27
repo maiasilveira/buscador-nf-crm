@@ -241,7 +241,9 @@ async function criarTarefaClickUpParaNota(
       valorTotal: Number(resumo.valorTotal).toLocaleString("pt-BR", {
         minimumFractionDigits: 2,
       }),
+      valorTotalNumerico: Number(resumo.valorTotal),
       dataEmissao: resumo.dataEmissao,
+      statusColeta: xmlCompleto ? "COMPLETA" : "RESUMO",
       xmlCompleto,
     });
     await prisma.notaFiscal.update({

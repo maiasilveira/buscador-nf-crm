@@ -123,6 +123,7 @@ async function upsertNotaServico(
       valorServico: Number(resumo.valorServico).toLocaleString("pt-BR", {
         minimumFractionDigits: 2,
       }),
+      valorServicoNumerico: Number(resumo.valorServico),
       dataEmissao: resumo.dataEmissao,
       xmlCompleto,
     });

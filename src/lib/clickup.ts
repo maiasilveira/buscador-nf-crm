@@ -1,13 +1,21 @@
 import "server-only";
+import { CAMPOS_CLICKUP } from "@/lib/clickup-fields";
 
 // Integração com a API v2 do ClickUp — cria uma tarefa por nota fiscal
-// coletada na lista "App Coleta NF" (espaço CONTÁBIL E FISCAL).
+// coletada na lista "App Coleta NF" (espaço CONTÁBIL E FISCAL), com os
+// campos customizados do catálogo em src/lib/clickup-fields.ts.
 //
 // Variáveis de ambiente necessárias:
 // - CLICKUP_API_TOKEN: token de API pessoal ou de app do ClickUp
 //   (gerado em Configurações → Apps, na conta do ClickUp).
 // - CLICKUP_LIST_ID: id da lista "App Coleta NF" (901716420520 no workspace
 //   atual — confirme se mudar de workspace).
+//
+// Os campos customizados precisam existir na lista antes de serem
+// preenchidos — rode `npm run clickup:setup-fields` uma vez (veja README).
+// Preenchimento é best-effort: um campo que não existe (ainda não criado,
+// renomeado, ou catálogo desatualizado) é simplesmente ignorado — nunca
+// impede a tarefa de ser criada.
 
 const CLICKUP_API_BASE = "https://api.clickup.com/api/v2";
 
@@ -27,6 +35,81 @@ function listId(): string {
   return id;
 }
 
+type ClickUpFieldOption = { id: string; name: string };
+type ClickUpFieldDef = {
+  id: string;
+  name: string;
+  type: string;
+  type_config?: { options?: ClickUpFieldOption[] };
+};
+
+// Cache em memória dos campos da lista — evita um GET extra por nota numa
+// mesma execução (uma sincronização processa várias notas em sequência).
+// TTL curto porque o processo serverless pode ficar "quente" entre
+// invocações do cron.
+let fieldsCache: { fetchedAt: number; fields: ClickUpFieldDef[] } | null = null;
+const FIELDS_CACHE_TTL_MS = 5 * 60 * 1000;
+
+async function getListFields(): Promise<ClickUpFieldDef[]> {
+  if (fieldsCache && Date.now() - fieldsCache.fetchedAt < FIELDS_CACHE_TTL_MS) {
+    return fieldsCache.fields;
+  }
+  const res = await fetch(`${CLICKUP_API_BASE}/list/${listId()}/field`, {
+    headers: { Authorization: apiToken() },
+  });
+  if (!res.ok) {
+    console.error(`Falha ao buscar campos customizados da lista (${res.status})`);
+    return fieldsCache?.fields ?? [];
+  }
+  const data = (await res.json()) as { fields: ClickUpFieldDef[] };
+  fieldsCache = { fetchedAt: Date.now(), fields: data.fields };
+  return data.fields;
+}
+
+function findField(fields: ClickUpFieldDef[], name: string): ClickUpFieldDef | undefined {
+  const target = name.trim().toLowerCase();
+  return fields.find((f) => f.name.trim().toLowerCase() === target);
+}
+
+/** Monta o array `custom_fields` (id + value) pro payload de criação da
+ * tarefa a partir de um mapa `{ nomeDoCampo: valorBruto }`. Campos "drop_down"
+ * recebem o rótulo da opção (ex: "NF-e") e são resolvidos pro UUID da opção;
+ * campos "date" recebem um `Date` e são convertidos pra epoch ms; o resto
+ * (texto/moeda) passa direto. Um campo ausente na lista, ou uma opção de
+ * dropdown sem correspondência, é simplesmente omitido do resultado. */
+async function montarCustomFields(
+  valores: Record<string, string | number | Date | null | undefined>
+): Promise<{ id: string; value: string | number }[]> {
+  const fields = await getListFields();
+  const resultado: { id: string; value: string | number }[] = [];
+
+  for (const [nome, valor] of Object.entries(valores)) {
+    if (valor === null || valor === undefined || valor === "") continue;
+    const field = findField(fields, nome);
+    if (!field) continue; // campo ainda não criado na lista — ignora
+
+    if (field.type === "drop_down") {
+      const option = field.type_config?.options?.find(
+        (o) => o.name.trim().toLowerCase() === String(valor).trim().toLowerCase()
+      );
+      if (option) resultado.push({ id: field.id, value: option.id });
+      continue;
+    }
+
+    if (field.type === "date") {
+      const date = valor instanceof Date ? valor : new Date(String(valor));
+      if (!Number.isNaN(date.getTime())) {
+        resultado.push({ id: field.id, value: date.getTime() });
+      }
+      continue;
+    }
+
+    resultado.push({ id: field.id, value: String(valor) });
+  }
+
+  return resultado;
+}
+
 export type NotaParaClickUp = {
   chaveAcesso: string;
   numero: string;
@@ -36,7 +119,9 @@ export type NotaParaClickUp = {
   empresaRazaoSocial: string;
   empresaCnpj: string;
   valorTotal: string; // já formatado, ex: "1.234,56"
+  valorTotalNumerico: number;
   dataEmissao: Date;
+  statusColeta: "RESUMO" | "COMPLETA";
   xmlCompleto?: string | null;
 };
 
@@ -49,6 +134,7 @@ export type NotaServicoParaClickUp = {
   empresaCnpj: string;
   discriminacao: string | null;
   valorServico: string; // já formatado, ex: "1.234,56"
+  valorServicoNumerico: number;
   dataEmissao: Date;
   xmlCompleto?: string | null;
 };
@@ -62,6 +148,7 @@ async function criarTarefa(params: {
   name: string;
   markdown_description: string;
   chaveAcesso: string;
+  custom_fields: { id: string; value: string | number }[];
   xmlCompleto?: string | null;
 }): Promise<ClickUpTaskResponse> {
   const res = await fetch(`${CLICKUP_API_BASE}/list/${listId()}/task`, {
@@ -73,6 +160,7 @@ async function criarTarefa(params: {
     body: JSON.stringify({
       name: params.name,
       markdown_description: params.markdown_description,
+      custom_fields: params.custom_fields,
     }),
   });
 
@@ -112,10 +200,23 @@ export async function criarTarefaNotaFiscal(
     `_Coletada automaticamente pelo Buscador NF CRM._`,
   ].join("\n");
 
+  const custom_fields = await montarCustomFields({
+    "Tipo de Documento": "NF-e",
+    "CNPJ Emitente/Prestador": nota.emitenteCnpj,
+    "Razão Social Emitente/Prestador": nota.emitenteNome,
+    "CNPJ da Empresa (destinatário/tomador)": nota.empresaCnpj,
+    "Chave de Acesso": nota.chaveAcesso,
+    "Número do Documento": `${nota.numero}/${nota.serie}`,
+    Valor: nota.valorTotalNumerico,
+    "Data de Emissão": nota.dataEmissao,
+    "Status de Coleta": nota.statusColeta === "COMPLETA" ? "XML completo" : "Resumo",
+  });
+
   return criarTarefa({
     name,
     markdown_description,
     chaveAcesso: nota.chaveAcesso,
+    custom_fields,
     xmlCompleto: nota.xmlCompleto,
   });
 }
@@ -139,10 +240,23 @@ export async function criarTarefaNotaServico(
     `_Coletada automaticamente pelo Buscador NF CRM (NFS-e — cobertura parcial, veja README)._`,
   ].join("\n");
 
+  const custom_fields = await montarCustomFields({
+    "Tipo de Documento": "NFS-e",
+    "CNPJ Emitente/Prestador": nota.prestadorCnpj,
+    "Razão Social Emitente/Prestador": nota.prestadorNome,
+    "CNPJ da Empresa (destinatário/tomador)": nota.empresaCnpj,
+    "Chave de Acesso": nota.chaveAcesso,
+    "Número do Documento": nota.numero,
+    Valor: nota.valorServicoNumerico,
+    "Data de Emissão": nota.dataEmissao,
+    "Status de Coleta": "NFS-e",
+  });
+
   return criarTarefa({
     name,
     markdown_description,
     chaveAcesso: nota.chaveAcesso,
+    custom_fields,
     xmlCompleto: nota.xmlCompleto,
   });
 }
@@ -170,3 +284,6 @@ export async function anexarXmlNaTarefa(
     throw new Error(`Falha ao anexar arquivo (${res.status}): ${body}`);
   }
 }
+
+// Mantido pro script de setup e uso futuro — reexportado por conveniência.
+export { CAMPOS_CLICKUP };

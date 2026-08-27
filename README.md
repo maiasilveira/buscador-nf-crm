@@ -43,8 +43,11 @@ ciência da NF-e, por exemplo, só faz sentido para quem recebe.
   seção de aviso abaixo). Diferente da NF-e, o ADN já entrega o XML
   completo direto, sem etapa de manifestação.
 - **ClickUp**: assim que uma nota é vista pela primeira vez, o app cria
-  **uma tarefa por nota** na lista "App Coleta NF" (emitente/prestador,
-  CNPJ, número, valor, data) e anexa o XML assim que ele fica disponível.
+  **uma tarefa por nota** na lista "App Coleta NF" — emitente/prestador,
+  CNPJ, número, valor e data vão tanto na descrição da tarefa quanto em
+  **campos customizados** (pra filtrar/agrupar/exportar a lista), e o XML é
+  anexado assim que fica disponível. Veja "Campos customizados no ClickUp"
+  abaixo pra provisionar esses campos.
 - **Sincronização**: roda automaticamente todo dia via cron da Vercel
   (`vercel.json` → `/api/cron/sync`, NF-e e NFS-e juntas), ou manualmente
   pela tela **Sincronização** (todas as empresas) ou pelo botão
@@ -107,6 +110,42 @@ Antes de operar em produção:
    prestadores em municípios ainda não aderidos), considere complementar
    com um provedor agregador pago (Focus NFe, PlugNotas, NFe.io) — eles já
    resolvem a fragmentação municipal, mas têm custo por CNPJ.
+
+## Campos customizados no ClickUp
+
+Além do texto na descrição da tarefa, cada nota preenche campos
+customizados na lista "App Coleta NF" — dá pra filtrar, agrupar ou exportar
+a lista por eles (ex: uma view agrupada por "Tipo de Documento", ou
+ordenada por "Valor"). Catálogo completo em `src/lib/clickup-fields.ts`:
+
+| Campo | Tipo | Preenchido com |
+|---|---|---|
+| Tipo de Documento | Dropdown (NF-e / NFS-e) | — |
+| CNPJ Emitente/Prestador | Texto | quem emitiu a nota |
+| Razão Social Emitente/Prestador | Texto | quem emitiu a nota |
+| CNPJ da Empresa (destinatário/tomador) | Texto | a empresa cadastrada no app |
+| Chave de Acesso | Texto | — |
+| Número do Documento | Texto | número (+ série, na NF-e) |
+| Valor | Moeda (BRL) | valor total / valor do serviço |
+| Data de Emissão | Data | — |
+| Status de Coleta | Dropdown (Resumo / XML completo / NFS-e) | só relevante pra NF-e |
+
+**Esses campos precisam existir na lista antes de serem preenchidos.**
+Rode uma vez (precisa de `CLICKUP_API_TOKEN` e `CLICKUP_LIST_ID` já
+configurados no `.env`):
+
+```bash
+npm run clickup:setup-fields
+```
+
+É idempotente — roda de novo sem duplicar o que já existe, então também
+serve pra criar só o que faltar depois de editar o catálogo. Um campo que
+ainda não foi criado (ou foi renomeado na lista) é simplesmente ignorado
+na hora de preencher a tarefa — nunca impede a nota de ser coletada. Este
+script **não foi executado contra a API real do ClickUp** nesta sessão
+(sem token disponível) — testei a lógica contra um servidor local que
+simula as respostas da API, mas vale conferir o resultado na lista depois
+de rodar pela primeira vez.
 
 ## Rodando localmente
 
