@@ -18,7 +18,9 @@ export default async function EmpresasPage() {
       certValidUntil: true,
       lastSyncAt: true,
       lastSyncError: true,
-      _count: { select: { notas: true } },
+      lastSyncNfseAt: true,
+      lastSyncNfseError: true,
+      _count: { select: { notas: true, notasServico: true } },
     },
   });
 

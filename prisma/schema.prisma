@@ -46,10 +46,21 @@ model Empresa {
   lastSyncAt    DateTime?
   lastSyncError String?
 
+  // Cursor equivalente, mas do Ambiente de Dados Nacional (ADN) do Sistema
+  // Nacional NFS-e — sequência de NSU independente da NF-e. Veja
+  // src/lib/nfse/client.ts sobre a cobertura parcial (só municípios que já
+  // aderiram ao padrão nacional).
+  ultNsuNfse String @default("000000000000000")
+  maxNsuNfse String @default("000000000000000")
+
+  lastSyncNfseAt    DateTime?
+  lastSyncNfseError String?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   notas    NotaFiscal[]
+  notasServico NotaServico[]
   syncLogs SyncLog[]
 }
 
@@ -88,10 +99,45 @@ model NotaFiscal {
   @@index([status])
 }
 
+// Nota Fiscal de Serviço Eletrônica (NFS-e), coletada via Sistema Nacional
+// NFS-e / Ambiente de Dados Nacional (ADN) — cobertura limitada aos
+// municípios que já aderiram ao padrão nacional (veja README).
+model NotaServico {
+  id        String  @id @default(cuid())
+  empresa   Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  empresaId String
+
+  chaveAcesso String @unique // chave de acesso da NFS-e (padrão nacional)
+  nsu         String // NSU do documento no ADN (para depuração/auditoria)
+  numero      String
+
+  prestadorCnpj String
+  prestadorNome String
+  tomadorCnpj   String
+
+  valorServico Decimal @db.Decimal(14, 2)
+  discriminacao String?
+  dataEmissao  DateTime
+
+  xmlCompleto String // XML da NFS-e (o ADN já entrega o documento completo, sem etapa de manifestação)
+
+  clickupTaskId    String?
+  clickupTaskUrl   String?
+  clickupSyncError String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([empresaId])
+}
+
 model SyncLog {
   id         String   @id @default(cuid())
   empresa    Empresa  @relation(fields: [empresaId], references: [id], onDelete: Cascade)
   empresaId  String
+
+  // "NFE" (SEFAZ, Distribuição DFe) | "NFSE" (ADN, Sistema Nacional NFS-e)
+  tipoDocumento String @default("NFE")
 
   startedAt  DateTime @default(now())
   finishedAt DateTime?

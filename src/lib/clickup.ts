@@ -40,13 +40,61 @@ export type NotaParaClickUp = {
   xmlCompleto?: string | null;
 };
 
+export type NotaServicoParaClickUp = {
+  chaveAcesso: string;
+  numero: string;
+  prestadorNome: string;
+  prestadorCnpj: string;
+  empresaRazaoSocial: string;
+  empresaCnpj: string;
+  discriminacao: string | null;
+  valorServico: string; // já formatado, ex: "1.234,56"
+  dataEmissao: Date;
+  xmlCompleto?: string | null;
+};
+
 type ClickUpTaskResponse = {
   id: string;
   url: string;
 };
 
-/** Cria uma tarefa na lista "App Coleta NF" para uma nota fiscal recém
- * coletada. Retorna o id e a url da tarefa criada. */
+async function criarTarefa(params: {
+  name: string;
+  markdown_description: string;
+  chaveAcesso: string;
+  xmlCompleto?: string | null;
+}): Promise<ClickUpTaskResponse> {
+  const res = await fetch(`${CLICKUP_API_BASE}/list/${listId()}/task`, {
+    method: "POST",
+    headers: {
+      Authorization: apiToken(),
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      name: params.name,
+      markdown_description: params.markdown_description,
+    }),
+  });
+
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    throw new Error(`Falha ao criar tarefa no ClickUp (${res.status}): ${body}`);
+  }
+
+  const data = (await res.json()) as ClickUpTaskResponse;
+
+  if (params.xmlCompleto) {
+    await anexarXmlNaTarefa(data.id, params.chaveAcesso, params.xmlCompleto).catch((err) => {
+      // Não falha a criação da tarefa por causa do anexo — só registra.
+      console.error(`Falha ao anexar XML na tarefa ${data.id}:`, err);
+    });
+  }
+
+  return data;
+}
+
+/** Cria uma tarefa na lista "App Coleta NF" para uma nota fiscal (NF-e)
+ * recém coletada. Retorna o id e a url da tarefa criada. */
 export async function criarTarefaNotaFiscal(
   nota: NotaParaClickUp
 ): Promise<ClickUpTaskResponse> {
@@ -64,30 +112,39 @@ export async function criarTarefaNotaFiscal(
     `_Coletada automaticamente pelo Buscador NF CRM._`,
   ].join("\n");
 
-  const res = await fetch(`${CLICKUP_API_BASE}/list/${listId()}/task`, {
-    method: "POST",
-    headers: {
-      Authorization: apiToken(),
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ name, markdown_description }),
+  return criarTarefa({
+    name,
+    markdown_description,
+    chaveAcesso: nota.chaveAcesso,
+    xmlCompleto: nota.xmlCompleto,
   });
+}
 
-  if (!res.ok) {
-    const body = await res.text().catch(() => "");
-    throw new Error(`Falha ao criar tarefa no ClickUp (${res.status}): ${body}`);
-  }
+/** Cria uma tarefa na lista "App Coleta NF" para uma NFS-e recém coletada. */
+export async function criarTarefaNotaServico(
+  nota: NotaServicoParaClickUp
+): Promise<ClickUpTaskResponse> {
+  const dataFmt = nota.dataEmissao.toLocaleDateString("pt-BR");
+  const name = `NFS-e ${nota.numero} — ${nota.prestadorNome} → ${nota.empresaRazaoSocial}`;
 
-  const data = (await res.json()) as ClickUpTaskResponse;
+  const markdown_description = [
+    `**Chave de acesso:** \`${nota.chaveAcesso}\``,
+    `**Prestador:** ${nota.prestadorNome} (${nota.prestadorCnpj})`,
+    `**Tomador (CNPJ cadastrado):** ${nota.empresaRazaoSocial} (${nota.empresaCnpj})`,
+    `**Número:** ${nota.numero}`,
+    `**Data de emissão:** ${dataFmt}`,
+    `**Valor do serviço:** R$ ${nota.valorServico}`,
+    ...(nota.discriminacao ? [`**Discriminação:** ${nota.discriminacao}`] : []),
+    ``,
+    `_Coletada automaticamente pelo Buscador NF CRM (NFS-e — cobertura parcial, veja README)._`,
+  ].join("\n");
 
-  if (nota.xmlCompleto) {
-    await anexarXmlNaTarefa(data.id, nota.chaveAcesso, nota.xmlCompleto).catch((err) => {
-      // Não falha a criação da tarefa por causa do anexo — só registra.
-      console.error(`Falha ao anexar XML na tarefa ${data.id}:`, err);
-    });
-  }
-
-  return data;
+  return criarTarefa({
+    name,
+    markdown_description,
+    chaveAcesso: nota.chaveAcesso,
+    xmlCompleto: nota.xmlCompleto,
+  });
 }
 
 /** Anexa o XML completo da NF-e a uma tarefa já existente — usado quando o

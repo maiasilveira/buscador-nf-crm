@@ -21,7 +21,9 @@ type Empresa = {
   certValidUntil: Date | null;
   lastSyncAt: Date | null;
   lastSyncError: string | null;
-  _count: { notas: number };
+  lastSyncNfseAt: Date | null;
+  lastSyncNfseError: string | null;
+  _count: { notas: number; notasServico: number };
 };
 
 export function EmpresaCard({ empresa }: { empresa: Empresa }) {
@@ -44,7 +46,7 @@ export function EmpresaCard({ empresa }: { empresa: Empresa }) {
           <p className="text-xs text-ink-muted">
             {empresa.cnpjFormatado} · {empresa.uf} ·{" "}
             {empresa.ambiente === "PRODUCAO" ? "Produção" : "Homologação"} ·{" "}
-            {empresa._count.notas} nota(s) coletada(s)
+            {empresa._count.notas} NF-e · {empresa._count.notasServico} NFS-e
           </p>
           {empresa.certSubject && (
             <p className="mt-1 text-xs text-ink-muted">
@@ -60,11 +62,21 @@ export function EmpresaCard({ empresa }: { empresa: Empresa }) {
           )}
           {empresa.lastSyncAt && (
             <p className="mt-1 text-xs text-ink-muted">
-              Última sincronização: {empresa.lastSyncAt.toLocaleString("pt-BR")}
+              Última sincronização NF-e: {empresa.lastSyncAt.toLocaleString("pt-BR")}
             </p>
           )}
           {empresa.lastSyncError && (
-            <p className="mt-1 text-xs text-status-critical">Erro: {empresa.lastSyncError}</p>
+            <p className="mt-1 text-xs text-status-critical">Erro (NF-e): {empresa.lastSyncError}</p>
+          )}
+          {empresa.lastSyncNfseAt && (
+            <p className="mt-1 text-xs text-ink-muted">
+              Última sincronização NFS-e: {empresa.lastSyncNfseAt.toLocaleString("pt-BR")}
+            </p>
+          )}
+          {empresa.lastSyncNfseError && (
+            <p className="mt-1 text-xs text-status-critical">
+              Erro (NFS-e): {empresa.lastSyncNfseError}
+            </p>
           )}
           {erro && <p className="mt-1 text-xs text-status-critical">{erro}</p>}
         </div>
@@ -96,7 +108,7 @@ export function EmpresaCard({ empresa }: { empresa: Empresa }) {
           >
             {empresa.active ? "Desativar" : "Ativar"}
           </Button>
-          {empresa._count.notas === 0 && (
+          {empresa._count.notas === 0 && empresa._count.notasServico === 0 && (
             <Button
               variant="danger"
               disabled={pending}

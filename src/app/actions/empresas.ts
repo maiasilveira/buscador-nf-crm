@@ -119,8 +119,11 @@ export async function alternarAtivaEmpresaAction(empresaId: string) {
 
 export async function excluirEmpresaAction(empresaId: string) {
   await requireUser();
-  const notas = await prisma.notaFiscal.count({ where: { empresaId } });
-  if (notas > 0) {
+  const [notas, notasServico] = await Promise.all([
+    prisma.notaFiscal.count({ where: { empresaId } }),
+    prisma.notaServico.count({ where: { empresaId } }),
+  ]);
+  if (notas > 0 || notasServico > 0) {
     throw new Error(
       "Não é possível excluir uma empresa que já tem notas fiscais coletadas — desative-a."
     );

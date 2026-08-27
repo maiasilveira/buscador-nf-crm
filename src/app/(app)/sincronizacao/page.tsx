@@ -15,7 +15,8 @@ export default async function SincronizacaoPage() {
         <div>
           <h1 className="text-xl font-semibold tracking-tight">Sincronização</h1>
           <p className="mt-1 text-sm text-ink-secondary">
-            Rodada automática a cada hora (ver <code>vercel.json</code>), ou dispare manualmente.
+            Rodada automática diária (NF-e e NFS-e — ver <code>vercel.json</code>), ou dispare
+            manualmente.
           </p>
         </div>
         <SincronizarTodasButton />
@@ -28,7 +29,12 @@ export default async function SincronizacaoPage() {
           {logs.map((log) => (
             <div key={log.id} className="flex items-center justify-between gap-3 px-5 py-3">
               <div className="min-w-0">
-                <p className="truncate text-sm font-medium">{log.empresa.razaoSocial}</p>
+                <p className="truncate text-sm font-medium">
+                  {log.empresa.razaoSocial}{" "}
+                  <span className="font-normal text-ink-muted">
+                    · {log.tipoDocumento === "NFSE" ? "NFS-e" : "NF-e"}
+                  </span>
+                </p>
                 <p className="truncate text-xs text-ink-muted">
                   {log.startedAt.toLocaleString("pt-BR")}
                   {log.notasNovas > 0 && ` · ${log.notasNovas} nota(s) nova(s)`}
