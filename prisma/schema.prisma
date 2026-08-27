@@ -1,0 +1,103 @@
+// Schema do Buscador NF CRM — coleta automática de notas fiscais (NF-e) na
+// SEFAZ para múltiplos CNPJs, com integração ao ClickUp.
+//
+// Campos de "tipo fechado" (ambiente, status, papel de usuário) são strings
+// validadas em código — veja src/lib/types.ts para os valores permitidos.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id           String   @id @default(cuid())
+  name         String
+  email        String   @unique
+  passwordHash String
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+}
+
+model Empresa {
+  id           String   @id @default(cuid())
+  cnpj         String   @unique // só dígitos, 14 caracteres
+  razaoSocial  String
+  ambiente     String   @default("PRODUCAO") // "PRODUCAO" | "HOMOLOGACAO"
+  uf           String // sigla da UF do CNPJ (cUFAutor exigido pelo webservice)
+  active       Boolean  @default(true)
+
+  // Certificado digital A1 (.pfx/.p12), necessário para autenticar no
+  // webservice da SEFAZ (TLS mútuo) e para assinar a Manifestação do
+  // Destinatário. Armazenado cifrado em repouso — veja src/lib/crypto.ts.
+  certPfxEnc      Bytes?
+  certPasswordEnc String?
+  certSubject     String? // extraído do certificado, só para exibição/conferência
+  certValidUntil  DateTime?
+
+  // Cursor de paginação incremental do webservice NFeDistribuicaoDFe
+  // (NT 2014.002) — cada consulta retorna documentos com NSU > ultNSU.
+  ultNsu String @default("000000000000000")
+  maxNsu String @default("000000000000000")
+
+  lastSyncAt    DateTime?
+  lastSyncError String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  notas    NotaFiscal[]
+  syncLogs SyncLog[]
+}
+
+model NotaFiscal {
+  id            String   @id @default(cuid())
+  empresa       Empresa  @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  empresaId     String
+
+  chaveAcesso   String   @unique // chave de acesso de 44 dígitos da NF-e
+  nsu           String   // NSU do documento na Distribuição DFe (para depuração/auditoria)
+  numero        String
+  serie         String
+  emitenteCnpj  String
+  emitenteNome  String
+  valorTotal    Decimal  @db.Decimal(14, 2)
+  dataEmissao   DateTime
+
+  // "RESUMO": só o resumo (resNFe) foi recebido — ainda não manifestado /
+  // XML completo não liberado pela SEFAZ.
+  // "COMPLETA": XML completo (procNFe) obtido após manifestação de ciência.
+  status String @default("RESUMO")
+
+  xmlResumo    String? // XML do resNFe, sempre disponível
+  xmlCompleto  String? // XML do procNFe, só após manifestação + nova consulta
+
+  manifestadaEm DateTime?
+
+  clickupTaskId  String?
+  clickupTaskUrl String?
+  clickupSyncError String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([empresaId])
+  @@index([status])
+}
+
+model SyncLog {
+  id         String   @id @default(cuid())
+  empresa    Empresa  @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  empresaId  String
+
+  startedAt  DateTime @default(now())
+  finishedAt DateTime?
+  status     String   @default("EM_ANDAMENTO") // "EM_ANDAMENTO" | "SUCESSO" | "ERRO"
+  notasNovas Int      @default(0)
+  mensagem   String?
+
+  @@index([empresaId])
+}
