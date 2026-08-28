@@ -38,6 +38,13 @@ export async function setupAdminAction(
 
 export type LoginState = { error?: string } | undefined;
 
+// Trava contra força bruta: depois de MAX_TENTATIVAS erradas seguidas, a
+// conta fica bloqueada por LOCKOUT_MINUTOS — reseta a zero em qualquer
+// login bem-sucedido. Persistido no banco (não em memória) porque o app
+// roda em funções serverless sem estado compartilhado entre invocações.
+const MAX_TENTATIVAS = 5;
+const LOCKOUT_MINUTOS = 15;
+
 export async function loginAction(
   _prevState: LoginState,
   formData: FormData
@@ -52,14 +59,41 @@ export async function loginAction(
   }
 
   const user = await prisma.user.findUnique({ where: { email } });
+  // Mesma mensagem genérica em todos os casos de falha (conta inexistente,
+  // inativa, bloqueada ou senha errada) — não dá pista de qual condição
+  // se aplica.
+  const erroGenerico = { error: "E-mail ou senha incorretos." };
+
   if (!user || !user.active) {
-    return { error: "E-mail ou senha incorretos." };
+    return erroGenerico;
+  }
+
+  if (user.lockedUntil && user.lockedUntil > new Date()) {
+    return {
+      error: `Muitas tentativas incorretas. Tente novamente em alguns minutos.`,
+    };
   }
 
   const valid = await verifyPassword(password, user.passwordHash);
   if (!valid) {
-    return { error: "E-mail ou senha incorretos." };
+    const tentativas = user.failedLoginAttempts + 1;
+    await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        failedLoginAttempts: tentativas,
+        lockedUntil:
+          tentativas >= MAX_TENTATIVAS
+            ? new Date(Date.now() + LOCKOUT_MINUTOS * 60 * 1000)
+            : null,
+      },
+    });
+    return erroGenerico;
   }
+
+  await prisma.user.update({
+    where: { id: user.id },
+    data: { failedLoginAttempts: 0, lockedUntil: null },
+  });
 
   await createSession(user.id);
   redirect("/");

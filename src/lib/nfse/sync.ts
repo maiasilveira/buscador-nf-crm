@@ -30,8 +30,20 @@ export async function sincronizarNfseEmpresa(empresaId: string): Promise<Resulta
       throw new Error("Empresa sem certificado digital cadastrado.");
     }
 
-    const pfx = decryptBuffer(empresa.certPfxEnc);
-    const passphrase = decryptString(empresa.certPasswordEnc);
+    // Veja o comentário equivalente em src/lib/sefaz/sync.ts: isola erros de
+    // descriptografia/parsing do certificado (que nunca devem ir pro
+    // lastSyncNfseError exibido na tela) do resto do fluxo.
+    let pfx: Buffer;
+    let passphrase: string;
+    try {
+      pfx = decryptBuffer(empresa.certPfxEnc);
+      passphrase = decryptString(empresa.certPasswordEnc);
+    } catch (err) {
+      console.error(`Falha ao carregar certificado da empresa ${empresaId}:`, err);
+      throw new Error(
+        "Não foi possível carregar o certificado digital cadastrado (senha incorreta, arquivo corrompido, ou a chave de cifragem do servidor mudou). Recadastre o certificado em Empresas."
+      );
+    }
 
     let ultNsu = empresa.ultNsuNfse;
     let maxNsu = empresa.maxNsuNfse;

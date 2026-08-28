@@ -33,9 +33,26 @@ export async function sincronizarEmpresa(empresaId: string): Promise<ResultadoSy
       throw new Error("Empresa sem certificado digital cadastrado.");
     }
 
-    const pfx = decryptBuffer(empresa.certPfxEnc);
-    const passphrase = decryptString(empresa.certPasswordEnc);
-    const { privateKeyPem, certPem } = lerCertificadoPfx(pfx, passphrase);
+    // Isolado do resto do try: qualquer exceção aqui vem de descriptografia
+    // (node:crypto) ou parsing do .pfx (node-forge) — nunca deixamos o
+    // texto original dessas exceções chegar ao banco/tela (lastSyncError é
+    // exibido pra qualquer usuário logado). O detalhe completo só vai pro
+    // log do servidor.
+    let pfx: Buffer;
+    let passphrase: string;
+    let privateKeyPem: string;
+    let certPem: string;
+    try {
+      pfx = decryptBuffer(empresa.certPfxEnc);
+      passphrase = decryptString(empresa.certPasswordEnc);
+      ({ privateKeyPem, certPem } = lerCertificadoPfx(pfx, passphrase));
+    } catch (err) {
+      console.error(`Falha ao carregar certificado da empresa ${empresaId}:`, err);
+      throw new Error(
+        "Não foi possível carregar o certificado digital cadastrado (senha incorreta, arquivo corrompido, ou a chave de cifragem do servidor mudou). Recadastre o certificado em Empresas."
+      );
+    }
+
     const ambiente = empresa.ambiente as Ambiente;
 
     let ultNsu = empresa.ultNsu;

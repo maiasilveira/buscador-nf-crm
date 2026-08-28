@@ -20,6 +20,10 @@ model User {
   passwordHash String
   active       Boolean  @default(true)
   createdAt    DateTime @default(now())
+
+  // Trava simples contra força bruta no login — veja src/app/actions/auth.ts.
+  failedLoginAttempts Int       @default(0)
+  lockedUntil         DateTime?
 }
 
 model Empresa {
