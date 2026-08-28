@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { requireUser } from "@/lib/auth";
+import { assertAdmin, requireUser } from "@/lib/auth";
 import { sincronizarEmpresa, sincronizarTodasEmpresas } from "@/lib/sefaz/sync";
 import { sincronizarNfseEmpresa, sincronizarNfseTodasEmpresas } from "@/lib/nfse/sync";
 import { registrarAuditoria } from "@/lib/audit";
@@ -15,6 +15,7 @@ function revalidarTudo() {
 
 export async function sincronizarTodasAction() {
   const usuario = await requireUser();
+  assertAdmin(usuario);
   await registrarAuditoria({
     userId: usuario.id,
     action: "SYNC_DISPARADA_MANUAL",
@@ -27,6 +28,7 @@ export async function sincronizarTodasAction() {
 
 export async function sincronizarEmpresaAction(empresaId: string) {
   const usuario = await requireUser();
+  assertAdmin(usuario);
   await registrarAuditoria({
     userId: usuario.id,
     action: "SYNC_DISPARADA_MANUAL",

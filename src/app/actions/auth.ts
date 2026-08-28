@@ -30,7 +30,7 @@ export async function setupAdminAction(
   if (!isValidPassword(password)) return { error: "A senha precisa ter pelo menos 8 caracteres." };
 
   const user = await prisma.user.create({
-    data: { name, email, passwordHash: await hashPassword(password) },
+    data: { name, email, role: "ADMIN", passwordHash: await hashPassword(password) },
   });
 
   await registrarAuditoria({

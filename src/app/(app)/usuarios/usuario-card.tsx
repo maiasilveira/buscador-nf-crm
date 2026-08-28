@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { alternarAtivoUsuarioAction } from "@/app/actions/usuarios";
+import { alternarAtivoUsuarioAction, alterarPapelUsuarioAction } from "@/app/actions/usuarios";
 import { Button, Card } from "@/components/ui";
 import { RedefinirSenhaForm } from "./redefinir-senha-form";
 
@@ -10,6 +10,7 @@ type Usuario = {
   name: string;
   email: string;
   active: boolean;
+  role: "ADMIN" | "CONSULTA";
   createdAt: Date;
   lockedUntil: Date | null;
 };
@@ -21,12 +22,32 @@ export function UsuarioCard({ usuario, souEu }: { usuario: Usuario; souEu: boole
 
   const bloqueado = usuario.lockedUntil ? usuario.lockedUntil > new Date() : false;
 
+  function rodar(acao: () => Promise<void>) {
+    setErro(null);
+    startTransition(async () => {
+      try {
+        await acao();
+      } catch (err) {
+        setErro(err instanceof Error ? err.message : String(err));
+      }
+    });
+  }
+
   return (
     <Card>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="font-medium">
             {usuario.name} {souEu && <span className="text-xs font-normal text-ink-muted">(você)</span>}{" "}
+            <span
+              className={`ml-1 rounded-full px-2 py-0.5 text-[10px] font-medium ${
+                usuario.role === "ADMIN"
+                  ? "bg-accent/15 text-accent"
+                  : "bg-black/5 text-ink-secondary"
+              }`}
+            >
+              {usuario.role === "ADMIN" ? "Administrador" : "Consulta"}
+            </span>
             {!usuario.active && (
               <span className="ml-1 text-xs font-normal text-ink-muted">(inativo)</span>
             )}
@@ -49,16 +70,18 @@ export function UsuarioCard({ usuario, souEu }: { usuario: Usuario; souEu: boole
           <Button
             variant="secondary"
             disabled={pending}
-            onClick={() => {
-              setErro(null);
-              startTransition(async () => {
-                try {
-                  await alternarAtivoUsuarioAction(usuario.id);
-                } catch (err) {
-                  setErro(err instanceof Error ? err.message : String(err));
-                }
-              });
-            }}
+            onClick={() =>
+              rodar(() =>
+                alterarPapelUsuarioAction(usuario.id, usuario.role === "ADMIN" ? "CONSULTA" : "ADMIN")
+              )
+            }
+          >
+            {usuario.role === "ADMIN" ? "Tornar consulta" : "Tornar administrador"}
+          </Button>
+          <Button
+            variant="secondary"
+            disabled={pending}
+            onClick={() => rodar(() => alternarAtivoUsuarioAction(usuario.id))}
           >
             {usuario.active ? "Desativar" : "Ativar"}
           </Button>

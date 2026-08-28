@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
-import { requireUser } from "@/lib/auth";
+import { assertAdmin, requireUser } from "@/lib/auth";
 import { formatCnpj, isValidCnpj, onlyDigits } from "@/lib/cnpj";
 import { encryptBuffer, encryptString } from "@/lib/crypto";
 import { validarCertificadoPfx } from "@/lib/sefaz/cert";
@@ -38,6 +38,7 @@ export async function criarEmpresaAction(
   formData: FormData
 ): Promise<EmpresaFormState> {
   const usuario = await requireUser();
+  assertAdmin(usuario);
 
   const cnpj = onlyDigits(String(formData.get("cnpj") ?? ""));
   const razaoSocial = String(formData.get("razaoSocial") ?? "").trim();
@@ -89,6 +90,7 @@ export async function atualizarEmpresaAction(
   formData: FormData
 ): Promise<EmpresaFormState> {
   const usuario = await requireUser();
+  assertAdmin(usuario);
 
   const razaoSocial = String(formData.get("razaoSocial") ?? "").trim();
   const uf = String(formData.get("uf") ?? "").trim().toUpperCase();
@@ -135,6 +137,7 @@ export async function atualizarEmpresaAction(
 
 export async function alternarAtivaEmpresaAction(empresaId: string) {
   const usuario = await requireUser();
+  assertAdmin(usuario);
   const empresa = await prisma.empresa.findUniqueOrThrow({ where: { id: empresaId } });
   const novoEstado = !empresa.active;
   await prisma.empresa.update({
@@ -153,6 +156,7 @@ export async function alternarAtivaEmpresaAction(empresaId: string) {
 
 export async function excluirEmpresaAction(empresaId: string) {
   const usuario = await requireUser();
+  assertAdmin(usuario);
   const empresa = await prisma.empresa.findUniqueOrThrow({ where: { id: empresaId } });
   const [notas, notasServico] = await Promise.all([
     prisma.notaFiscal.count({ where: { empresaId } }),

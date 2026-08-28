@@ -1,10 +1,14 @@
 import { prisma } from "@/lib/prisma";
+import { requireUser } from "@/lib/auth";
 import { Card, EmptyState } from "@/components/ui";
 import { formatCnpj } from "@/lib/cnpj";
 import { EmpresaForm } from "./empresa-form";
 import { EmpresaCard } from "./empresa-card";
 
 export default async function EmpresasPage() {
+  const usuario = await requireUser();
+  const isAdmin = usuario.role === "ADMIN";
+
   const empresas = await prisma.empresa.findMany({
     orderBy: { createdAt: "asc" },
     select: {
@@ -31,13 +35,16 @@ export default async function EmpresasPage() {
         <p className="mt-1 text-sm text-ink-secondary">
           Cada empresa precisa de um certificado digital A1 (.pfx) válido para a
           coleta automática na SEFAZ funcionar.
+          {!isAdmin && " Seu acesso é só de consulta — fale com um administrador para alterar algo aqui."}
         </p>
       </div>
 
-      <Card>
-        <h2 className="mb-3 text-sm font-semibold text-ink-secondary">Nova empresa</h2>
-        <EmpresaForm />
-      </Card>
+      {isAdmin && (
+        <Card>
+          <h2 className="mb-3 text-sm font-semibold text-ink-secondary">Nova empresa</h2>
+          <EmpresaForm />
+        </Card>
+      )}
 
       <div className="space-y-3">
         {empresas.length === 0 ? (
@@ -47,6 +54,7 @@ export default async function EmpresasPage() {
             <EmpresaCard
               key={empresa.id}
               empresa={{ ...empresa, cnpjFormatado: formatCnpj(empresa.cnpj) }}
+              isAdmin={isAdmin}
             />
           ))
         )}

@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { requireAdmin } from "@/lib/auth";
 import { Card, EmptyState, Select } from "@/components/ui";
 import type { AcaoAuditoria } from "@/lib/audit";
 
@@ -11,6 +12,7 @@ const ACAO_LABEL: Record<AcaoAuditoria, string> = {
   USUARIO_ATIVADO: "Usuário ativado",
   USUARIO_DESATIVADO: "Usuário desativado",
   USUARIO_SENHA_REDEFINIDA: "Senha redefinida",
+  USUARIO_PAPEL_ALTERADO: "Papel alterado",
   EMPRESA_CRIADA: "Empresa criada",
   EMPRESA_EDITADA: "Empresa editada",
   CERTIFICADO_SUBSTITUIDO: "Certificado substituído",
@@ -34,6 +36,7 @@ export default async function AuditoriaPage({
 }: {
   searchParams: Promise<{ action?: string }>;
 }) {
+  await requireAdmin();
   const { action } = await searchParams;
 
   const logs = await prisma.auditLog.findMany({

@@ -24,8 +24,13 @@ const NAV_ITEMS_ADMIN: NavItem[] = [
   { href: "/auditoria", label: "Auditoria", icon: "📋" },
 ];
 
-export function NavBar({ user }: { user: { name: string; email: string } }) {
+export function NavBar({
+  user,
+}: {
+  user: { name: string; email: string; role: "ADMIN" | "CONSULTA" };
+}) {
   const pathname = usePathname();
+  const itensAdmin = user.role === "ADMIN" ? NAV_ITEMS_ADMIN : [];
 
   return (
     <>
@@ -36,7 +41,7 @@ export function NavBar({ user }: { user: { name: string; email: string } }) {
           </Link>
 
           <nav className="hidden items-center gap-1 sm:flex">
-            {[...NAV_ITEMS, ...NAV_ITEMS_ADMIN].map((item) => {
+            {[...NAV_ITEMS, ...itensAdmin].map((item) => {
               const active = pathname === item.href;
               return (
                 <Link
@@ -56,7 +61,7 @@ export function NavBar({ user }: { user: { name: string; email: string } }) {
 
           <div className="flex items-center gap-3">
             <nav className="flex items-center gap-2 sm:hidden">
-              {NAV_ITEMS_ADMIN.map((item) => (
+              {itensAdmin.map((item) => (
                 <Link
                   key={item.href}
                   href={item.href}

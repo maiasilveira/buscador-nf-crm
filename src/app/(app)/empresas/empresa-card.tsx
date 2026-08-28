@@ -26,7 +26,7 @@ type Empresa = {
   _count: { notas: number; notasServico: number };
 };
 
-export function EmpresaCard({ empresa }: { empresa: Empresa }) {
+export function EmpresaCard({ empresa, isAdmin }: { empresa: Empresa; isAdmin: boolean }) {
   const [editando, setEditando] = useState(false);
   const [pending, startTransition] = useTransition();
   const [erro, setErro] = useState<string | null>(null);
@@ -81,57 +81,59 @@ export function EmpresaCard({ empresa }: { empresa: Empresa }) {
           {erro && <p className="mt-1 text-xs text-status-critical">{erro}</p>}
         </div>
 
-        <div className="flex flex-wrap gap-2">
-          <Button
-            variant="secondary"
-            disabled={pending || !empresa.active}
-            onClick={() =>
-              startTransition(async () => {
-                setErro(null);
-                try {
-                  await sincronizarEmpresaAction(empresa.id);
-                } catch (err) {
-                  setErro(err instanceof Error ? err.message : String(err));
-                }
-              })
-            }
-          >
-            Sincronizar agora
-          </Button>
-          <Button variant="secondary" onClick={() => setEditando((v) => !v)}>
-            {editando ? "Fechar" : "Editar"}
-          </Button>
-          <Button
-            variant="secondary"
-            disabled={pending}
-            onClick={() => startTransition(() => alternarAtivaEmpresaAction(empresa.id))}
-          >
-            {empresa.active ? "Desativar" : "Ativar"}
-          </Button>
-          {empresa._count.notas === 0 && empresa._count.notasServico === 0 && (
+        {isAdmin && (
+          <div className="flex flex-wrap gap-2">
             <Button
-              variant="danger"
-              disabled={pending}
-              onClick={() => {
-                if (confirm(`Excluir a empresa ${empresa.razaoSocial}?`)) {
-                  startTransition(async () => {
-                    setErro(null);
-                    try {
-                      await excluirEmpresaAction(empresa.id);
-                    } catch (err) {
-                      setErro(err instanceof Error ? err.message : String(err));
-                    }
-                  });
-                }
-              }}
+              variant="secondary"
+              disabled={pending || !empresa.active}
+              onClick={() =>
+                startTransition(async () => {
+                  setErro(null);
+                  try {
+                    await sincronizarEmpresaAction(empresa.id);
+                  } catch (err) {
+                    setErro(err instanceof Error ? err.message : String(err));
+                  }
+                })
+              }
             >
-              Excluir
+              Sincronizar agora
             </Button>
-          )}
-        </div>
+            <Button variant="secondary" onClick={() => setEditando((v) => !v)}>
+              {editando ? "Fechar" : "Editar"}
+            </Button>
+            <Button
+              variant="secondary"
+              disabled={pending}
+              onClick={() => startTransition(() => alternarAtivaEmpresaAction(empresa.id))}
+            >
+              {empresa.active ? "Desativar" : "Ativar"}
+            </Button>
+            {empresa._count.notas === 0 && empresa._count.notasServico === 0 && (
+              <Button
+                variant="danger"
+                disabled={pending}
+                onClick={() => {
+                  if (confirm(`Excluir a empresa ${empresa.razaoSocial}?`)) {
+                    startTransition(async () => {
+                      setErro(null);
+                      try {
+                        await excluirEmpresaAction(empresa.id);
+                      } catch (err) {
+                        setErro(err instanceof Error ? err.message : String(err));
+                      }
+                    });
+                  }
+                }}
+              >
+                Excluir
+              </Button>
+            )}
+          </div>
+        )}
       </div>
 
-      {editando && (
+      {isAdmin && editando && (
         <EmpresaEditForm empresa={empresa} onDone={() => setEditando(false)} />
       )}
     </Card>

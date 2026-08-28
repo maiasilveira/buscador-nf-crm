@@ -6,6 +6,8 @@ export type SyncLogStatus = "EM_ANDAMENTO" | "SUCESSO" | "ERRO";
 
 export type TipoDocumento = "NFE" | "NFSE";
 
+export type UserRole = "ADMIN" | "CONSULTA";
+
 // Código IBGE de cada UF — exigido como cUFAutor nas chamadas ao webservice
 // da SEFAZ (NFeDistribuicaoDFe), independentemente do endpoint ser nacional.
 export const UF_CODES: Record<string, number> = {

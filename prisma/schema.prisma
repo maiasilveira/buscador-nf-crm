@@ -21,6 +21,13 @@ model User {
   active       Boolean  @default(true)
   createdAt    DateTime @default(now())
 
+  // "ADMIN": acesso completo, inclusive cadastrar/substituir certificados
+  // digitais, gerenciar usuários e ver a Auditoria.
+  // "CONSULTA": só visualiza (notas, empresas, logs de sincronização) —
+  // não mexe em nada. Default ADMIN para não travar contas já existentes
+  // quando este campo foi adicionado.
+  role String @default("ADMIN")
+
   // Trava simples contra força bruta no login — veja src/app/actions/auth.ts.
   failedLoginAttempts Int       @default(0)
   lockedUntil         DateTime?

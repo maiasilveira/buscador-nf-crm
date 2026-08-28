@@ -1,8 +1,10 @@
 import { prisma } from "@/lib/prisma";
+import { requireUser } from "@/lib/auth";
 import { Card, EmptyState, StatusBadge } from "@/components/ui";
 import { SincronizarTodasButton } from "./sincronizar-todas-button";
 
 export default async function SincronizacaoPage() {
+  const usuario = await requireUser();
   const logs = await prisma.syncLog.findMany({
     orderBy: { startedAt: "desc" },
     take: 50,
@@ -19,7 +21,7 @@ export default async function SincronizacaoPage() {
             manualmente.
           </p>
         </div>
-        <SincronizarTodasButton />
+        {usuario.role === "ADMIN" && <SincronizarTodasButton />}
       </div>
 
       {logs.length === 0 ? (

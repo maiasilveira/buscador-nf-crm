@@ -56,19 +56,30 @@ ciência da NF-e, por exemplo, só faz sentido para quem recebe.
   filtro por empresa, XML disponível para download e link direto para a
   tarefa criada no ClickUp.
 - **Acesso**: login próprio (e-mail/senha), independente de qualquer outro
-  sistema — o primeiro acesso cria o usuário administrador em `/setup`. Os
-  demais usuários são adicionados em **Usuários**, que também ativa/desativa
-  (revoga acesso na hora, sem apagar histórico) e redefine a senha de
+  sistema — o primeiro acesso cria o usuário **administrador** em `/setup`.
+  Os demais usuários são adicionados em **Usuários** (só para
+  administradores), com um de dois papéis:
+  - **Administrador**: acesso completo — cadastra/edita/desativa/exclui
+    empresa, cadastra e substitui certificado digital, dispara
+    sincronização manual, gerencia usuários, vê a Auditoria.
+  - **Consulta**: só visualiza — dashboard, notas (NF-e/NFS-e com XML e
+    link do ClickUp), lista de empresas (sem os botões de ação) e os logs
+    de sincronização. Sem acesso a Usuários nem Auditoria; qualquer
+    tentativa direta é bloqueada tanto na tela quanto no servidor.
+
+  Dá pra promover/rebaixar um usuário a qualquer momento, ativar/desativar
+  (revoga acesso na hora, sem apagar histórico) e redefinir a senha de
   qualquer um — não há e-mail de convite nem "esqueci minha senha", é tudo
-  combinado diretamente entre a equipe. Login trava por 15 minutos depois de
-  5 senhas erradas seguidas. **Todo usuário ativo tem acesso completo** —
-  inclusive a cadastrar/substituir certificados digitais — não há papéis
-  hoje (ex: "só consulta" vs. "administrador").
-- **Auditoria**: todo evento sensível fica registrado em **Auditoria** —
-  login (inclusive falhas e bloqueios), criação/edição/exclusão de empresa,
-  substituição de certificado, usuários criados/ativados/desativados,
-  sincronizações disparadas (manual ou pelo cron). Nunca guarda senha,
-  certificado ou qualquer outro segredo — só o evento e quem/quando.
+  combinado diretamente entre a equipe. O sistema nunca deixa desativar ou
+  rebaixar o **último administrador ativo** — travaria o acesso
+  administrativo de todo mundo. Login trava por 15 minutos depois de 5
+  senhas erradas seguidas.
+- **Auditoria** (só para administradores): todo evento sensível fica
+  registrado — login (inclusive falhas e bloqueios), criação/edição/
+  exclusão de empresa, substituição de certificado, usuários criados/
+  ativados/desativados/promovidos, sincronizações disparadas (manual ou
+  pelo cron). Nunca guarda senha, certificado ou qualquer outro segredo —
+  só o evento e quem/quando.
 
 ## ⚠️ Sobre a integração com a SEFAZ (NF-e)
 

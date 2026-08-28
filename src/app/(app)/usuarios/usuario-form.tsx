@@ -2,7 +2,7 @@
 
 import { useActionState } from "react";
 import { criarUsuarioAction, type UsuarioFormState } from "@/app/actions/usuarios";
-import { Button, FieldError, Input, Label } from "@/components/ui";
+import { Button, FieldError, Input, Label, Select } from "@/components/ui";
 
 export function UsuarioForm() {
   const [state, formAction, pending] = useActionState<UsuarioFormState, FormData>(
@@ -12,7 +12,7 @@ export function UsuarioForm() {
 
   return (
     <form action={formAction} className="space-y-3">
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-4">
         <label className="block text-sm">
           <Label>Nome</Label>
           <Input name="name" required className="mt-1" />
@@ -24,6 +24,13 @@ export function UsuarioForm() {
         <label className="block text-sm">
           <Label>Senha inicial (mínimo 8 caracteres)</Label>
           <Input name="password" type="password" required minLength={8} className="mt-1" />
+        </label>
+        <label className="block text-sm">
+          <Label>Papel</Label>
+          <Select name="role" defaultValue="CONSULTA" className="mt-1">
+            <option value="CONSULTA">Consulta (só visualiza)</option>
+            <option value="ADMIN">Administrador (acesso completo)</option>
+          </Select>
         </label>
       </div>
 
