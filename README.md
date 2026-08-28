@@ -81,24 +81,30 @@ ciência da NF-e, por exemplo, só faz sentido para quem recebe.
   pelo cron). Nunca guarda senha, certificado ou qualquer outro segredo —
   só o evento e quem/quando.
 
-## ⚠️ Sobre a integração com a SEFAZ (NF-e)
+## Sobre a integração com a SEFAZ (NF-e)
 
 A integração com o webservice `NFeDistribuicaoDFe` e a assinatura da
-manifestação de ciência (`src/lib/sefaz/`) foram implementadas seguindo a
-especificação oficial (Nota Técnica 2014.002 e o schema XML da NF-e), mas
-**não puderam ser testadas contra o ambiente real da SEFAZ** — isso exige
-um certificado A1 válido de um CNPJ real, que não estava disponível no
-momento da implementação. Antes de operar em produção:
+manifestação de ciência (`src/lib/sefaz/`) foi implementada seguindo a
+especificação oficial (Nota Técnica 2014.002 e o schema XML da NF-e) e
+**já foi confirmada em produção**, com certificados A1 reais — a
+autenticação TLS mútua e o envelope SOAP são aceitos pela SEFAZ.
 
-1. Cadastre uma empresa com um certificado de teste e rode "Sincronizar
-   agora" — acompanhe `lastSyncError` na tela de Empresas e os logs em
-   Sincronização.
-2. Se a SEFAZ retornar um erro de schema/SOAP, o texto de `xMotivo` ajuda a
-   ajustar `src/lib/sefaz/client.ts` (consulta) ou
-   `src/lib/sefaz/manifestacao.ts` (assinatura do evento) — os dois pontos
-   mais sensíveis a pequenas divergências de especificação.
-3. Certificados costumam expirar em 1 ano — a tela de Empresas mostra a
-   validade e sinaliza quando um certificado está expirado.
+Um ponto a saber, que já apareceu em produção: a SEFAZ retorna
+**cStat 656 ("Consumo Indevido")** se a mesma empresa for consultada de
+novo menos de 1h depois de uma resposta sem documentos novos — é uma
+proteção da própria SEFAZ contra excesso de chamadas, não um erro do app.
+O sistema já trata isso: guarda até quando esperar
+(`Empresa.nfeBloqueadaAte`), desabilita o botão "Sincronizar agora"
+mostrando quando libera, e nem tenta de novo (nem pelo cron, nem
+manualmente) antes desse horário — pra não piorar o bloqueio. Isso tende a
+acontecer mais com empresas recém-cadastradas, sincronizadas mais de uma
+vez seguida antes de haver notas novas pra encontrar.
+
+Outros erros de schema/SOAP menos comuns: o texto de `xMotivo` (parte da
+mensagem de erro) ajuda a ajustar `src/lib/sefaz/client.ts` (consulta) ou
+`src/lib/sefaz/manifestacao.ts` (assinatura do evento) se aparecer algo
+inesperado. Certificados costumam expirar em 1 ano — a tela de Empresas
+mostra a validade e sinaliza quando um certificado está expirado.
 
 ## ⚠️⚠️ Sobre a integração com o Sistema Nacional NFS-e — leia antes de usar
 

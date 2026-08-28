@@ -79,6 +79,12 @@ model Empresa {
   lastSyncAt    DateTime?
   lastSyncError String?
 
+  // A SEFAZ rejeita (cStat 656 "Consumo Indevido") uma nova consulta feita
+  // menos de 1h depois de uma resposta sem documentos novos. Guardamos até
+  // quando esperar pra não insistir e piorar o bloqueio — veja
+  // src/lib/sefaz/sync.ts.
+  nfeBloqueadaAte DateTime?
+
   // Cursor equivalente, mas do Ambiente de Dados Nacional (ADN) do Sistema
   // Nacional NFS-e — sequência de NSU independente da NF-e. Veja
   // src/lib/nfse/client.ts sobre a cobertura parcial (só municípios que já

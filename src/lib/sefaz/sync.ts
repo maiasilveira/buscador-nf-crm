@@ -10,6 +10,19 @@ import type { Ambiente } from "@/lib/types";
 
 const MAX_PAGINAS_POR_SYNC = 20; // trava de segurança contra loop infinito por rodada
 
+// cStat da SEFAZ para "Rejeição: Consumo Indevido" — retornado quando se
+// consulta de novo menos de 1h depois de uma resposta sem documentos
+// novos. Ver NT 2014.002 (Distribuição DFe).
+const CSTAT_CONSUMO_INDEVIDO = "656";
+const ESPERA_CONSUMO_INDEVIDO_MS = 60 * 60 * 1000; // 1 hora, conforme a própria mensagem da SEFAZ
+
+function formatarEspera(ate: Date): string {
+  const minutos = Math.max(1, Math.ceil((ate.getTime() - Date.now()) / 60000));
+  return minutos >= 60
+    ? `${Math.ceil(minutos / 60)}h`
+    : `${minutos}min`;
+}
+
 export type ResultadoSync = {
   empresaId: string;
   notasNovas: number;
@@ -21,6 +34,16 @@ export type ResultadoSync = {
  * quando disponível, e cria/atualiza a tarefa correspondente no ClickUp. */
 export async function sincronizarEmpresa(empresaId: string): Promise<ResultadoSync> {
   const empresa = await prisma.empresa.findUniqueOrThrow({ where: { id: empresaId } });
+
+  // A SEFAZ pediu pra esperar (cStat 656) numa tentativa anterior — nem
+  // tenta de novo, pra não piorar o bloqueio nem gastar chamada à toa.
+  if (empresa.nfeBloqueadaAte && empresa.nfeBloqueadaAte > new Date()) {
+    return {
+      empresaId,
+      notasNovas: 0,
+      erro: `SEFAZ pediu pra aguardar — tente novamente em ${formatarEspera(empresa.nfeBloqueadaAte)}.`,
+    };
+  }
 
   const log = await prisma.syncLog.create({
     data: { empresaId, status: "EM_ANDAMENTO" },
@@ -72,6 +95,13 @@ export async function sincronizarEmpresa(empresaId: string): Promise<ResultadoSy
 
       // cStat 137 = nenhum documento localizado (fim da paginação);
       // 138 = documento(s) localizado(s).
+      if (resposta.statusCode === CSTAT_CONSUMO_INDEVIDO) {
+        const ate = new Date(Date.now() + ESPERA_CONSUMO_INDEVIDO_MS);
+        await prisma.empresa.update({ where: { id: empresaId }, data: { nfeBloqueadaAte: ate } });
+        throw new Error(
+          `A SEFAZ pediu pra esperar 1h entre consultas sem notas novas (cStat 656). Isso é uma proteção da própria SEFAZ contra excesso de chamadas — não é um erro do app. Próxima tentativa liberada às ${ate.toLocaleTimeString("pt-BR")}.`
+        );
+      }
       if (resposta.statusCode !== "137" && resposta.statusCode !== "138") {
         throw new Error(`SEFAZ retornou cStat ${resposta.statusCode}: ${resposta.motivo}`);
       }
@@ -120,7 +150,7 @@ export async function sincronizarEmpresa(empresaId: string): Promise<ResultadoSy
 
     await prisma.empresa.update({
       where: { id: empresaId },
-      data: { ultNsu, maxNsu, lastSyncAt: new Date(), lastSyncError: null },
+      data: { ultNsu, maxNsu, lastSyncAt: new Date(), lastSyncError: null, nfeBloqueadaAte: null },
     });
 
     await prisma.syncLog.update({

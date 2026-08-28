@@ -21,6 +21,7 @@ type Empresa = {
   certValidUntil: Date | null;
   lastSyncAt: Date | null;
   lastSyncError: string | null;
+  nfeBloqueadaAte: Date | null;
   lastSyncNfseAt: Date | null;
   lastSyncNfseError: string | null;
   _count: { notas: number; notasServico: number };
@@ -32,6 +33,7 @@ export function EmpresaCard({ empresa, isAdmin }: { empresa: Empresa; isAdmin: b
   const [erro, setErro] = useState<string | null>(null);
 
   const certExpirado = empresa.certValidUntil ? empresa.certValidUntil < new Date() : false;
+  const bloqueadaSefaz = empresa.nfeBloqueadaAte ? empresa.nfeBloqueadaAte > new Date() : false;
 
   return (
     <Card>
@@ -65,8 +67,14 @@ export function EmpresaCard({ empresa, isAdmin }: { empresa: Empresa; isAdmin: b
               Última sincronização NF-e: {empresa.lastSyncAt.toLocaleString("pt-BR")}
             </p>
           )}
-          {empresa.lastSyncError && (
+          {empresa.lastSyncError && !bloqueadaSefaz && (
             <p className="mt-1 text-xs text-status-critical">Erro (NF-e): {empresa.lastSyncError}</p>
+          )}
+          {bloqueadaSefaz && empresa.nfeBloqueadaAte && (
+            <p className="mt-1 text-xs text-status-warning">
+              A SEFAZ pediu pra aguardar (limite de consultas) — libera automaticamente às{" "}
+              {empresa.nfeBloqueadaAte.toLocaleTimeString("pt-BR")}. Não é um erro do app.
+            </p>
           )}
           {empresa.lastSyncNfseAt && (
             <p className="mt-1 text-xs text-ink-muted">
@@ -85,7 +93,8 @@ export function EmpresaCard({ empresa, isAdmin }: { empresa: Empresa; isAdmin: b
           <div className="flex flex-wrap gap-2">
             <Button
               variant="secondary"
-              disabled={pending || !empresa.active}
+              disabled={pending || !empresa.active || bloqueadaSefaz}
+              title={bloqueadaSefaz ? "Aguardando liberação da SEFAZ (limite de consultas)" : undefined}
               onClick={() =>
                 startTransition(async () => {
                   setErro(null);
@@ -97,7 +106,7 @@ export function EmpresaCard({ empresa, isAdmin }: { empresa: Empresa; isAdmin: b
                 })
               }
             >
-              Sincronizar agora
+              {bloqueadaSefaz ? "Aguardando SEFAZ" : "Sincronizar agora"}
             </Button>
             <Button variant="secondary" onClick={() => setEditando((v) => !v)}>
               {editando ? "Fechar" : "Editar"}
