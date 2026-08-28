@@ -12,6 +12,10 @@ const parser = new XMLParser({
   ignoreAttributes: false,
   attributeNamePrefix: "@_",
   removeNSPrefix: true,
+  // Ver o mesmo comentário em src/lib/sefaz/parse.ts — evita a conversão
+  // automática de texto numérico pra Number do JS, que corrompe chave de
+  // acesso e CNPJ com zero à esquerda.
+  parseTagValue: false,
 });
 
 export type NotaServicoResumida = {

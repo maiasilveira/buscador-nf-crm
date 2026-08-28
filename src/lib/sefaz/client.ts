@@ -113,6 +113,11 @@ const parser = new XMLParser({
   ignoreAttributes: false,
   attributeNamePrefix: "@_",
   removeNSPrefix: true,
+  // Sem isso, o fast-xml-parser converte texto "numérico" pra Number do JS
+  // — destrutivo pro cursor de NSU (15 dígitos) e outros campos numéricos
+  // longos. Tudo aqui já é tratado como string pelo código que consome o
+  // resultado, então nunca precisamos da conversão automática.
+  parseTagValue: false,
 });
 
 /** Consulta o webservice de Distribuição DFe a partir de um NSU (retorna

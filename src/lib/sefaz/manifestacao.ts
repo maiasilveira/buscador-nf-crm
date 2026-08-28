@@ -170,6 +170,10 @@ const parser = new XMLParser({
   ignoreAttributes: false,
   attributeNamePrefix: "@_",
   removeNSPrefix: true,
+  // Ver o mesmo comentário em src/lib/sefaz/client.ts — evita a conversão
+  // automática de texto numérico pra Number do JS, que corrompe campos
+  // longos (protocolo, NSU) e CNPJ com zero à esquerda.
+  parseTagValue: false,
 });
 
 export type ResultadoManifestacao = {

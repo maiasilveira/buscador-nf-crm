@@ -4,6 +4,12 @@ const parser = new XMLParser({
   ignoreAttributes: false,
   attributeNamePrefix: "@_",
   removeNSPrefix: true,
+  // Sem isso, o fast-xml-parser converte texto "numérico" pra Number do JS —
+  // destrutivo pra chave de acesso (44 dígitos, muito além da precisão de
+  // um Number) e pra CNPJ com zero à esquerda. Tudo aqui já é tratado como
+  // string pelo código que consome o resultado, então nunca precisamos da
+  // conversão automática.
+  parseTagValue: false,
 });
 
 export type NotaResumida = {
