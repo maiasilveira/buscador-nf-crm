@@ -130,22 +130,28 @@ ordenada por "Valor"). Catálogo completo em `src/lib/clickup-fields.ts`:
 | Data de Emissão | Data | — |
 | Status de Coleta | Dropdown (Resumo / XML completo / NFS-e) | só relevante pra NF-e |
 
-**Esses campos precisam existir na lista antes de serem preenchidos.**
-Rode uma vez (precisa de `CLICKUP_API_TOKEN` e `CLICKUP_LIST_ID` já
-configurados no `.env`):
+**Esses campos precisam existir na lista antes de serem preenchidos.** Já
+foram criados manualmente na lista "App Coleta NF" e conferidos contra o
+catálogo (nomes e opções de dropdown batendo exatamente) — não precisa
+fazer nada agora. Se precisar recriar algum campo no futuro (lista nova,
+campo apagado por engano), tem duas formas:
 
-```bash
-npm run clickup:setup-fields
-```
+- Manualmente na UI do ClickUp, seguindo a tabela acima à risca (nome
+  exato, incluindo acentos/parênteses — é por esse nome que o app resolve
+  o campo).
+- Ou rode o script (precisa de `CLICKUP_API_TOKEN` e `CLICKUP_LIST_ID` no
+  `.env`, e rodar de uma máquina com acesso à internet):
 
-É idempotente — roda de novo sem duplicar o que já existe, então também
-serve pra criar só o que faltar depois de editar o catálogo. Um campo que
-ainda não foi criado (ou foi renomeado na lista) é simplesmente ignorado
-na hora de preencher a tarefa — nunca impede a nota de ser coletada. Este
-script **não foi executado contra a API real do ClickUp** nesta sessão
-(sem token disponível) — testei a lógica contra um servidor local que
-simula as respostas da API, mas vale conferir o resultado na lista depois
-de rodar pela primeira vez.
+  ```bash
+  npm run clickup:setup-fields
+  ```
+
+  É idempotente — roda de novo sem duplicar o que já existe, então só cria
+  o que estiver faltando.
+
+Um campo que não existe na lista (renomeado, apagado, ou catálogo
+desatualizado) é simplesmente ignorado na hora de preencher a tarefa —
+nunca impede a nota de ser coletada.
 
 ## Rodando localmente
 

@@ -8,13 +8,13 @@
 // o comportamento não-bloqueante em src/lib/clickup.ts).
 //
 // Os tipos e o formato de `type_config` seguem a API v2 do ClickUp
-// ("Create List Field" / `POST /list/{list_id}/field`). Diferente da
-// integração com a SEFAZ/NFS-e, a API do ClickUp é estável e bem
-// documentada — a incerteza aqui é bem menor —, mas como não foi possível
-// rodar o script de criação de fato nesta sessão (falta um token real),
-// ainda vale conferir o resultado na lista antes de depender dele.
+// ("Create List Field" / `POST /list/{list_id}/field`). Os 9 campos abaixo
+// foram criados manualmente na lista real e conferidos via
+// clickup_get_custom_fields — nomes e opções batem exatamente. Uma
+// diferença encontrada nessa conferência: o campo "Texto" da UI do ClickUp
+// vira o tipo `short_text` na API (não `text`) — corrigido abaixo.
 
-export type TipoCampoClickUp = "drop_down" | "text" | "currency" | "date";
+export type TipoCampoClickUp = "drop_down" | "short_text" | "currency" | "date";
 
 export type CampoClickUp = {
   /** Nome exibido na lista do ClickUp — é por esse nome que a aplicação
@@ -28,11 +28,11 @@ export type CampoClickUp = {
 
 export const CAMPOS_CLICKUP: CampoClickUp[] = [
   { name: "Tipo de Documento", type: "drop_down", options: ["NF-e", "NFS-e"] },
-  { name: "CNPJ Emitente/Prestador", type: "text" },
-  { name: "Razão Social Emitente/Prestador", type: "text" },
-  { name: "CNPJ da Empresa (destinatário/tomador)", type: "text" },
-  { name: "Chave de Acesso", type: "text" },
-  { name: "Número do Documento", type: "text" },
+  { name: "CNPJ Emitente/Prestador", type: "short_text" },
+  { name: "Razão Social Emitente/Prestador", type: "short_text" },
+  { name: "CNPJ da Empresa (destinatário/tomador)", type: "short_text" },
+  { name: "Chave de Acesso", type: "short_text" },
+  { name: "Número do Documento", type: "short_text" },
   { name: "Valor", type: "currency" },
   { name: "Data de Emissão", type: "date" },
   {
