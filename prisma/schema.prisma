@@ -24,6 +24,28 @@ model User {
   // Trava simples contra força bruta no login — veja src/app/actions/auth.ts.
   failedLoginAttempts Int       @default(0)
   lockedUntil         DateTime?
+
+  auditLogs AuditLog[]
+}
+
+// Trilha de auditoria: quem fez o quê, quando. Nunca guarda segredos (senha,
+// certificado, token) — só metadados (ação, alvo, descrição textual sem
+// dados sensíveis). Veja src/lib/audit.ts.
+model AuditLog {
+  id     String @id @default(cuid())
+  user   User?  @relation(fields: [userId], references: [id], onDelete: SetNull)
+  userId String? // nulo = ação disparada pelo sistema (ex: cron), não por um usuário logado
+
+  action     String // ex: "LOGIN_SUCESSO", "EMPRESA_CRIADA", "CERTIFICADO_SUBSTITUIDO"
+  targetType String? // ex: "Empresa", "User"
+  targetId   String?
+  detalhes   String? // texto livre com contexto (nome/e-mail/razão social) — nunca segredos
+
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([targetType, targetId])
+  @@index([createdAt])
 }
 
 model Empresa {

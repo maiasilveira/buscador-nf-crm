@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { sincronizarTodasEmpresas } from "@/lib/sefaz/sync";
 import { sincronizarNfseTodasEmpresas } from "@/lib/nfse/sync";
+import { registrarAuditoria } from "@/lib/audit";
 
 // Chamado pelo cron da Vercel (veja vercel.json) — protegido por um segredo
 // simples para que só o cron (ou alguém que conheça o segredo) consiga
@@ -16,6 +17,8 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Não autorizado." }, { status: 401 });
     }
   }
+
+  await registrarAuditoria({ userId: null, action: "SYNC_DISPARADA_CRON" });
 
   const resultadosNfe = await sincronizarTodasEmpresas();
   const resultadosNfse = await sincronizarNfseTodasEmpresas();

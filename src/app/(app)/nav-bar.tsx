@@ -6,12 +6,22 @@ import { logoutAction } from "@/app/actions/auth";
 
 type NavItem = { href: string; label: string; icon: string };
 
+// Itens principais — aparecem no menu de topo (desktop) e na barra inferior
+// (mobile).
 const NAV_ITEMS: NavItem[] = [
   { href: "/", label: "Início", icon: "🏠" },
   { href: "/notas", label: "NF-e", icon: "📄" },
   { href: "/notas-servico", label: "NFS-e", icon: "🧾" },
   { href: "/empresas", label: "Empresas", icon: "🏢" },
   { href: "/sincronizacao", label: "Sincronização", icon: "🔄" },
+];
+
+// Itens administrativos — usados com menos frequência. Ficam no menu de
+// topo e como links de texto perto de "Sair", pra não disputar espaço com
+// os itens principais na barra inferior do mobile.
+const NAV_ITEMS_ADMIN: NavItem[] = [
+  { href: "/usuarios", label: "Usuários", icon: "👤" },
+  { href: "/auditoria", label: "Auditoria", icon: "📋" },
 ];
 
 export function NavBar({ user }: { user: { name: string; email: string } }) {
@@ -26,7 +36,7 @@ export function NavBar({ user }: { user: { name: string; email: string } }) {
           </Link>
 
           <nav className="hidden items-center gap-1 sm:flex">
-            {NAV_ITEMS.map((item) => {
+            {[...NAV_ITEMS, ...NAV_ITEMS_ADMIN].map((item) => {
               const active = pathname === item.href;
               return (
                 <Link
@@ -45,6 +55,19 @@ export function NavBar({ user }: { user: { name: string; email: string } }) {
           </nav>
 
           <div className="flex items-center gap-3">
+            <nav className="flex items-center gap-2 sm:hidden">
+              {NAV_ITEMS_ADMIN.map((item) => (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className={`text-xs font-medium underline-offset-2 ${
+                    pathname === item.href ? "text-accent underline" : "text-ink-muted underline"
+                  }`}
+                >
+                  {item.label}
+                </Link>
+              ))}
+            </nav>
             <span className="hidden text-xs text-ink-muted sm:inline" title={user.email}>
               {user.name}
             </span>

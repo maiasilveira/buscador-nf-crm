@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { requireUser } from "@/lib/auth";
 import { sincronizarEmpresa, sincronizarTodasEmpresas } from "@/lib/sefaz/sync";
 import { sincronizarNfseEmpresa, sincronizarNfseTodasEmpresas } from "@/lib/nfse/sync";
+import { registrarAuditoria } from "@/lib/audit";
 
 function revalidarTudo() {
   revalidatePath("/sincronizacao");
@@ -13,14 +14,25 @@ function revalidarTudo() {
 }
 
 export async function sincronizarTodasAction() {
-  await requireUser();
+  const usuario = await requireUser();
+  await registrarAuditoria({
+    userId: usuario.id,
+    action: "SYNC_DISPARADA_MANUAL",
+    detalhes: "Todas as empresas",
+  });
   await sincronizarTodasEmpresas();
   await sincronizarNfseTodasEmpresas();
   revalidarTudo();
 }
 
 export async function sincronizarEmpresaAction(empresaId: string) {
-  await requireUser();
+  const usuario = await requireUser();
+  await registrarAuditoria({
+    userId: usuario.id,
+    action: "SYNC_DISPARADA_MANUAL",
+    targetType: "Empresa",
+    targetId: empresaId,
+  });
   await sincronizarEmpresa(empresaId);
   await sincronizarNfseEmpresa(empresaId);
   revalidarTudo();

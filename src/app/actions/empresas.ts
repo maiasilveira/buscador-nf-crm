@@ -7,6 +7,7 @@ import { formatCnpj, isValidCnpj, onlyDigits } from "@/lib/cnpj";
 import { encryptBuffer, encryptString } from "@/lib/crypto";
 import { validarCertificadoPfx } from "@/lib/sefaz/cert";
 import { UF_CODES } from "@/lib/types";
+import { registrarAuditoria } from "@/lib/audit";
 
 export type EmpresaFormState = { error?: string } | undefined;
 
@@ -36,7 +37,7 @@ export async function criarEmpresaAction(
   _prevState: EmpresaFormState,
   formData: FormData
 ): Promise<EmpresaFormState> {
-  await requireUser();
+  const usuario = await requireUser();
 
   const cnpj = onlyDigits(String(formData.get("cnpj") ?? ""));
   const razaoSocial = String(formData.get("razaoSocial") ?? "").trim();
@@ -60,7 +61,7 @@ export async function criarEmpresaAction(
     return { error: err instanceof Error ? err.message : String(err) };
   }
 
-  await prisma.empresa.create({
+  const empresa = await prisma.empresa.create({
     data: {
       cnpj,
       razaoSocial,
@@ -68,6 +69,14 @@ export async function criarEmpresaAction(
       ambiente,
       ...certificado,
     },
+  });
+
+  await registrarAuditoria({
+    userId: usuario.id,
+    action: "EMPRESA_CRIADA",
+    targetType: "Empresa",
+    targetId: empresa.id,
+    detalhes: `${razaoSocial} (${formatCnpj(cnpj)})${certificado ? " — com certificado" : " — sem certificado"}`,
   });
 
   revalidatePath("/empresas");
@@ -79,7 +88,7 @@ export async function atualizarEmpresaAction(
   _prevState: EmpresaFormState,
   formData: FormData
 ): Promise<EmpresaFormState> {
-  await requireUser();
+  const usuario = await requireUser();
 
   const razaoSocial = String(formData.get("razaoSocial") ?? "").trim();
   const uf = String(formData.get("uf") ?? "").trim().toUpperCase();
@@ -103,22 +112,48 @@ export async function atualizarEmpresaAction(
     data: { razaoSocial, uf, ambiente, ...certificado },
   });
 
+  await registrarAuditoria({
+    userId: usuario.id,
+    action: "EMPRESA_EDITADA",
+    targetType: "Empresa",
+    targetId: empresaId,
+    detalhes: `${razaoSocial}`,
+  });
+  if (certificado) {
+    await registrarAuditoria({
+      userId: usuario.id,
+      action: "CERTIFICADO_SUBSTITUIDO",
+      targetType: "Empresa",
+      targetId: empresaId,
+      detalhes: `Certificado digital substituído para ${razaoSocial}`,
+    });
+  }
+
   revalidatePath("/empresas");
   return undefined;
 }
 
 export async function alternarAtivaEmpresaAction(empresaId: string) {
-  await requireUser();
+  const usuario = await requireUser();
   const empresa = await prisma.empresa.findUniqueOrThrow({ where: { id: empresaId } });
+  const novoEstado = !empresa.active;
   await prisma.empresa.update({
     where: { id: empresaId },
-    data: { active: !empresa.active },
+    data: { active: novoEstado },
+  });
+  await registrarAuditoria({
+    userId: usuario.id,
+    action: novoEstado ? "EMPRESA_ATIVADA" : "EMPRESA_DESATIVADA",
+    targetType: "Empresa",
+    targetId: empresaId,
+    detalhes: empresa.razaoSocial,
   });
   revalidatePath("/empresas");
 }
 
 export async function excluirEmpresaAction(empresaId: string) {
-  await requireUser();
+  const usuario = await requireUser();
+  const empresa = await prisma.empresa.findUniqueOrThrow({ where: { id: empresaId } });
   const [notas, notasServico] = await Promise.all([
     prisma.notaFiscal.count({ where: { empresaId } }),
     prisma.notaServico.count({ where: { empresaId } }),
@@ -129,6 +164,13 @@ export async function excluirEmpresaAction(empresaId: string) {
     );
   }
   await prisma.empresa.delete({ where: { id: empresaId } });
+  await registrarAuditoria({
+    userId: usuario.id,
+    action: "EMPRESA_EXCLUIDA",
+    targetType: "Empresa",
+    targetId: empresaId,
+    detalhes: `${empresa.razaoSocial} (${formatCnpj(empresa.cnpj)})`,
+  });
   revalidatePath("/empresas");
 }
 

@@ -3,7 +3,8 @@
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { hashPassword, isValidPassword, verifyPassword } from "@/lib/password";
-import { createSession, destroySession } from "@/lib/session";
+import { createSession, destroySession, getSessionUserId } from "@/lib/session";
+import { registrarAuditoria } from "@/lib/audit";
 
 export type SetupState = { error?: string } | undefined;
 
@@ -30,6 +31,14 @@ export async function setupAdminAction(
 
   const user = await prisma.user.create({
     data: { name, email, passwordHash: await hashPassword(password) },
+  });
+
+  await registrarAuditoria({
+    userId: user.id,
+    action: "USUARIO_CRIADO",
+    targetType: "User",
+    targetId: user.id,
+    detalhes: `${name} (${email}) — primeiro administrador, criado via /setup`,
   });
 
   await createSession(user.id);
@@ -65,10 +74,23 @@ export async function loginAction(
   const erroGenerico = { error: "E-mail ou senha incorretos." };
 
   if (!user || !user.active) {
+    await registrarAuditoria({
+      userId: null,
+      action: "LOGIN_FALHA",
+      targetType: "User",
+      detalhes: `Tentativa de login com e-mail ${email} (${!user ? "conta não existe" : "conta inativa"})`,
+    });
     return erroGenerico;
   }
 
   if (user.lockedUntil && user.lockedUntil > new Date()) {
+    await registrarAuditoria({
+      userId: user.id,
+      action: "LOGIN_BLOQUEADO",
+      targetType: "User",
+      targetId: user.id,
+      detalhes: `Tentativa de login com a conta ${email} temporariamente bloqueada`,
+    });
     return {
       error: `Muitas tentativas incorretas. Tente novamente em alguns minutos.`,
     };
@@ -77,15 +99,20 @@ export async function loginAction(
   const valid = await verifyPassword(password, user.passwordHash);
   if (!valid) {
     const tentativas = user.failedLoginAttempts + 1;
+    const bloqueou = tentativas >= MAX_TENTATIVAS;
     await prisma.user.update({
       where: { id: user.id },
       data: {
         failedLoginAttempts: tentativas,
-        lockedUntil:
-          tentativas >= MAX_TENTATIVAS
-            ? new Date(Date.now() + LOCKOUT_MINUTOS * 60 * 1000)
-            : null,
+        lockedUntil: bloqueou ? new Date(Date.now() + LOCKOUT_MINUTOS * 60 * 1000) : null,
       },
+    });
+    await registrarAuditoria({
+      userId: user.id,
+      action: "LOGIN_FALHA",
+      targetType: "User",
+      targetId: user.id,
+      detalhes: `Senha incorreta para ${email} (tentativa ${tentativas}/${MAX_TENTATIVAS}${bloqueou ? " — conta bloqueada por 15min" : ""})`,
     });
     return erroGenerico;
   }
@@ -95,11 +122,23 @@ export async function loginAction(
     data: { failedLoginAttempts: 0, lockedUntil: null },
   });
 
+  await registrarAuditoria({
+    userId: user.id,
+    action: "LOGIN_SUCESSO",
+    targetType: "User",
+    targetId: user.id,
+    detalhes: email,
+  });
+
   await createSession(user.id);
   redirect("/");
 }
 
 export async function logoutAction() {
+  const userId = await getSessionUserId();
+  if (userId) {
+    await registrarAuditoria({ userId, action: "LOGOUT", targetType: "User", targetId: userId });
+  }
   await destroySession();
   redirect("/login");
 }
