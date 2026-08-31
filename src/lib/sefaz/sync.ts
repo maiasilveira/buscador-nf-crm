@@ -98,8 +98,13 @@ export async function sincronizarEmpresa(empresaId: string): Promise<ResultadoSy
       if (resposta.statusCode === CSTAT_CONSUMO_INDEVIDO) {
         const ate = new Date(Date.now() + ESPERA_CONSUMO_INDEVIDO_MS);
         await prisma.empresa.update({ where: { id: empresaId }, data: { nfeBloqueadaAte: ate } });
+        // Guardamos o xMotivo literal da SEFAZ (não só a nossa mensagem
+        // amigável) — se o texto variar de uma ocorrência pra outra (ex.
+        // mencionando um horário de liberação diferente do nosso cálculo
+        // de 1h), isso é sinal de que outro sistema também está
+        // consultando o mesmo CNPJ e renovando o bloqueio por fora do app.
         throw new Error(
-          `A SEFAZ pediu pra esperar 1h entre consultas sem notas novas (cStat 656). Isso é uma proteção da própria SEFAZ contra excesso de chamadas — não é um erro do app. Próxima tentativa liberada às ${ate.toLocaleTimeString("pt-BR")}.`
+          `A SEFAZ pediu pra esperar 1h entre consultas sem notas novas (cStat 656). Isso é uma proteção da própria SEFAZ contra excesso de chamadas — não é um erro do app. Próxima tentativa liberada às ${ate.toLocaleTimeString("pt-BR")}. Mensagem original da SEFAZ: "${resposta.motivo}"`
         );
       }
       if (resposta.statusCode !== "137" && resposta.statusCode !== "138") {
