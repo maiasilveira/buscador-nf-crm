@@ -100,6 +100,34 @@ manualmente) antes desse horário — pra não piorar o bloqueio. Isso tende a
 acontecer mais com empresas recém-cadastradas, sincronizadas mais de uma
 vez seguida antes de haver notas novas pra encontrar.
 
+**Importante: esse bloqueio é por CNPJ na SEFAZ, não por aplicação.** Se
+outro sistema também consulta a Distribuição DFe para o mesmo CNPJ — por
+exemplo, um serviço pago de captura de notas contratado à parte pela
+contabilidade (caso real já observado: **Qive**) — as chamadas dele contam
+para o mesmo limite e podem manter a empresa bloqueada continuamente do
+ponto de vista do `buscador-nf-crm`, mesmo respeitando 1h entre as
+próprias tentativas. A mensagem de erro guardada em `lastSyncError`/no log
+de sincronização inclui o texto original (`xMotivo`) devolvido pela SEFAZ
+— útil para conferir se ele varia entre tentativas, o que reforça a
+hipótese de disputa externa pelo mesmo CNPJ.
+
+Não há como descobrir de fora o horário exato em que esse outro sistema
+consulta. A estratégia adotada aqui, quando isso acontece, é **tentar com
+mais frequência**: o workflow opcional
+`.github/workflows/sync-nfe-frequente.yml` chama
+`/api/cron/sync?apenas=nfe` a cada 10 minutos via GitHub Actions (o plano
+Hobby da Vercel só permite 1 cron por dia — ver seção de deploy). Cada
+tentativa é barata mesmo quando bloqueada: o app confere
+`Empresa.nfeBloqueadaAte` antes de chamar a SEFAZ e pula sem gastar
+requisição, então rodar com mais frequência não piora o bloqueio, só
+aumenta a chance de uma tentativa cair numa janela livre. Para ativar,
+cadastre o secret `CRON_SECRET` (mesmo valor da variável de ambiente na
+Vercel) em Settings → Secrets and variables → Actions do repositório no
+GitHub. O caminho mais confiável, porém, continua sendo perguntar
+diretamente a quem administra o outro serviço (contabilidade/Qive) qual a
+frequência/horário de consulta dele, para agendar a nossa fora dessa
+janela.
+
 Outros erros de schema/SOAP menos comuns: o texto de `xMotivo` (parte da
 mensagem de erro) ajuda a ajustar `src/lib/sefaz/client.ts` (consulta) ou
 `src/lib/sefaz/manifestacao.ts` (assinatura do evento) se aparecer algo

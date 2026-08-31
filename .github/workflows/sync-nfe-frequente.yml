@@ -1,0 +1,45 @@
+name: Sincronização frequente de NF-e
+
+# Dispara a sincronização de NF-e com mais frequência do que o cron diário da
+# Vercel (vercel.json). Motivo: a Distribuição DFe da SEFAZ bloqueia por
+# "Consumo Indevido" (cStat 656) quando o mesmo CNPJ é consultado com pouco
+# intervalo — inclusive por OUTROS sistemas (ex.: um serviço de captura
+# contratado à parte pela contabilidade). Como não temos como saber de fora
+# o horário exato em que esse outro sistema consulta, a estratégia aqui é
+# tentar com frequência: cada tentativa é barata (o app já pula sem chamar a
+# SEFAZ quando sabe que está bloqueado — ver `nfeBloqueadaAte` em
+# src/lib/sefaz/sync.ts) e, mais cedo ou mais tarde, alguma tentativa cai
+# numa janela livre.
+#
+# Só roda a parte de NF-e (`?apenas=nfe`) — a NFS-e já funciona bem com o
+# cron diário da Vercel e não precisa dessa cadência.
+#
+# Requer o secret CRON_SECRET configurado em
+# Settings > Secrets and variables > Actions do repositório, com o MESMO
+# valor da variável de ambiente CRON_SECRET cadastrada na Vercel.
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch: {}
+
+jobs:
+  sincronizar:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Chamar endpoint de sincronização de NF-e
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          if [ -z "$CRON_SECRET" ]; then
+            echo "CRON_SECRET não configurado nos secrets do repositório — abortando." >&2
+            exit 1
+          fi
+          status=$(curl -sS -o /tmp/resposta.json -w "%{http_code}" \
+            -H "Authorization: Bearer $CRON_SECRET" \
+            "https://buscador-nf-crm.vercel.app/api/cron/sync?apenas=nfe")
+          echo "HTTP $status"
+          cat /tmp/resposta.json
+          echo
+          if [ "$status" -ge 400 ]; then
+            exit 1
+          fi
