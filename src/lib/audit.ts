@@ -24,7 +24,8 @@ export type AcaoAuditoria =
   | "EMPRESA_DESATIVADA"
   | "EMPRESA_EXCLUIDA"
   | "SYNC_DISPARADA_MANUAL"
-  | "SYNC_DISPARADA_CRON";
+  | "SYNC_DISPARADA_CRON"
+  | "PDFS_RETROATIVOS_GERADOS";
 
 /** Registra um evento de auditoria. Nunca lança — uma falha ao gravar o log
  * não pode derrubar a ação que estava sendo auditada (login, criação de

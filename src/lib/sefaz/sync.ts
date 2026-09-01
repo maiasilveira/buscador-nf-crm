@@ -275,7 +275,7 @@ async function upsertNotaCompleta(
     await marcarStatusColetaCompleta(existente.clickupTaskId).catch((err) =>
       console.error(`Falha ao atualizar Status de Coleta na tarefa existente:`, err)
     );
-    await anexarDanfeSeDisponivel(existente.clickupTaskId, completa.chaveAcesso, xmlCompleto);
+    await anexarDanfeSeDisponivel(existente.id, existente.clickupTaskId, completa.chaveAcesso, xmlCompleto);
   } else {
     await criarTarefaClickUpParaNota(
       existente.id,
@@ -317,7 +317,7 @@ async function criarTarefaClickUpParaNota(
       data: { clickupTaskId: task.id, clickupTaskUrl: task.url, clickupSyncError: null },
     });
     if (xmlCompleto) {
-      await anexarDanfeSeDisponivel(task.id, resumo.chaveAcesso, xmlCompleto);
+      await anexarDanfeSeDisponivel(notaId, task.id, resumo.chaveAcesso, xmlCompleto);
     }
   } catch (err) {
     const mensagem = err instanceof Error ? err.message : String(err);
@@ -332,18 +332,25 @@ async function criarTarefaClickUpParaNota(
 /** Gera o DANFE em PDF a partir do XML completo e anexa na tarefa —
  * best-effort: uma falha aqui (XML com campo inesperado, geração do PDF)
  * nunca deve derrubar a sincronização nem impedir que a nota/tarefa já
- * criada permaneça válida. */
-async function anexarDanfeSeDisponivel(
+ * criada permaneça válida. Marca `pdfAnexado` só depois do anexo ter dado
+ * certo — é o que o backfill retroativo (gerarPdfsRetroativosAction) usa
+ * pra saber quais notas ainda não têm o PDF. Exportada porque o backfill a
+ * reusa diretamente. */
+export async function anexarDanfeSeDisponivel(
+  notaId: string,
   taskId: string,
   chaveAcesso: string,
   xmlCompleto: string
-): Promise<void> {
+): Promise<boolean> {
   try {
     const dados = parseProcNFeDanfe(xmlCompleto);
     const pdf = await gerarDanfePdf(dados);
     await anexarPdfNaTarefa(taskId, `DANFE-${chaveAcesso}.pdf`, pdf);
+    await prisma.notaFiscal.update({ where: { id: notaId }, data: { pdfAnexado: true } });
+    return true;
   } catch (err) {
     console.error(`Falha ao gerar/anexar DANFE da nota ${chaveAcesso}:`, err);
+    return false;
   }
 }
 

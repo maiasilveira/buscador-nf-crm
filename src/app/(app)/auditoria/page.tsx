@@ -21,6 +21,7 @@ const ACAO_LABEL: Record<AcaoAuditoria, string> = {
   EMPRESA_EXCLUIDA: "Empresa excluída",
   SYNC_DISPARADA_MANUAL: "Sincronização manual",
   SYNC_DISPARADA_CRON: "Sincronização automática (cron)",
+  PDFS_RETROATIVOS_GERADOS: "PDFs retroativos gerados",
 };
 
 const ACAO_CRITICA = new Set<AcaoAuditoria>([

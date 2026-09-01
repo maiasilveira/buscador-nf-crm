@@ -2,6 +2,8 @@ import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth";
 import { Card, EmptyState, StatusBadge } from "@/components/ui";
 import { SincronizarTodasButton } from "./sincronizar-todas-button";
+import { GerarPdfsRetroativosButton } from "./gerar-pdfs-retroativos-button";
+import { contarPdfsPendentesAction } from "@/app/actions/pdfs";
 
 export default async function SincronizacaoPage() {
   const usuario = await requireUser();
@@ -10,6 +12,8 @@ export default async function SincronizacaoPage() {
     take: 50,
     include: { empresa: { select: { razaoSocial: true, cnpj: true } } },
   });
+
+  const pdfsPendentes = usuario.role === "ADMIN" ? await contarPdfsPendentesAction() : 0;
 
   return (
     <div className="space-y-6">
@@ -23,6 +27,8 @@ export default async function SincronizacaoPage() {
         </div>
         {usuario.role === "ADMIN" && <SincronizarTodasButton />}
       </div>
+
+      {usuario.role === "ADMIN" && <GerarPdfsRetroativosButton pendentesInicial={pdfsPendentes} />}
 
       {logs.length === 0 ? (
         <EmptyState>Nenhuma sincronização executada ainda.</EmptyState>

@@ -131,6 +131,13 @@ model NotaFiscal {
   clickupTaskUrl String?
   clickupSyncError String?
 
+  // Marca se o DANFE em PDF já foi anexado na tarefa do ClickUp — sem isso
+  // não dá pra saber, de fora, se uma nota antiga (coletada antes do
+  // recurso de PDF existir) já tem o anexo ou não, e o backfill retroativo
+  // (gerarPdfsRetroativosAction) acabaria reanexando PDF duplicado a cada
+  // execução. Só é setado true depois de um anexo bem-sucedido.
+  pdfAnexado Boolean @default(false)
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -163,6 +170,10 @@ model NotaServico {
   clickupTaskId    String?
   clickupTaskUrl   String?
   clickupSyncError String?
+
+  // Mesmo motivo do campo equivalente em NotaFiscal — evita reanexar
+  // DANFSe duplicado no backfill retroativo.
+  pdfAnexado Boolean @default(false)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

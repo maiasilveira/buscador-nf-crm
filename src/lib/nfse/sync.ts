@@ -145,7 +145,7 @@ async function upsertNotaServico(
       where: { id: nota.id },
       data: { clickupTaskId: task.id, clickupTaskUrl: task.url, clickupSyncError: null },
     });
-    await anexarDanfseSeDisponivel(task.id, resumo.chaveAcesso, xmlCompleto);
+    await anexarDanfseSeDisponivel(nota.id, task.id, resumo.chaveAcesso, xmlCompleto);
   } catch (err) {
     const mensagem = err instanceof Error ? err.message : String(err);
     console.error(`Falha ao criar tarefa no ClickUp para NFS-e ${resumo.chaveAcesso}:`, err);
@@ -157,18 +157,24 @@ async function upsertNotaServico(
 
 /** Gera o DANFSe em PDF a partir do XML e anexa na tarefa — best-effort,
  * igual ao equivalente de NF-e em src/lib/sefaz/sync.ts: nunca derruba a
- * sincronização nem a tarefa já criada. */
-async function anexarDanfseSeDisponivel(
+ * sincronização nem a tarefa já criada. Marca `pdfAnexado` só no sucesso —
+ * é o que o backfill retroativo usa pra saber quais notas processar.
+ * Exportada porque o backfill a reusa diretamente. */
+export async function anexarDanfseSeDisponivel(
+  notaId: string,
   taskId: string,
   chaveAcesso: string,
   xmlCompleto: string
-): Promise<void> {
+): Promise<boolean> {
   try {
     const dados = parseNfseDanfse(xmlCompleto);
     const pdf = await gerarDanfsePdf(dados);
     await anexarPdfNaTarefa(taskId, `DANFSe-${chaveAcesso || "documento"}.pdf`, pdf);
+    await prisma.notaServico.update({ where: { id: notaId }, data: { pdfAnexado: true } });
+    return true;
   } catch (err) {
     console.error(`Falha ao gerar/anexar DANFSe da nota ${chaveAcesso}:`, err);
+    return false;
   }
 }
 

@@ -246,6 +246,14 @@ serverless da Vercel). Também dá pra baixar manualmente pela tela da nota
   sem o anexo de PDF (o XML continua disponível normalmente). Erros vão
   pro log do servidor.
 
+**Notas coletadas antes desse recurso existir** (ou cujo anexo falhou na
+hora) não ganham o PDF retroativamente sozinhas — a sincronização só
+processa documentos novos. Pra essas, tem um botão **"Gerar PDFs
+(N pendentes)"** na tela de Sincronização (só ADMIN), que roda em lotes
+pequenos até não sobrar nenhuma (`src/app/actions/pdfs.ts`,
+`gerarPdfsRetroativosAction`). O campo `pdfAnexado` no banco marca quais
+notas já têm o PDF, pra não gerar/anexar duplicado numa próxima rodada.
+
 ## Rodando localmente
 
 Pré-requisitos: Node.js 20+ e um banco Postgres acessível.
