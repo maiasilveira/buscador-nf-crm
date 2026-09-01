@@ -210,6 +210,42 @@ Um campo que não existe na lista (renomeado, apagado, ou catálogo
 desatualizado) é simplesmente ignorado na hora de preencher a tarefa —
 nunca impede a nota de ser coletada.
 
+## PDF (DANFE / DANFSe)
+
+Além do XML, o app gera um PDF a partir de cada nota — DANFE pra NF-e,
+DANFSe pra NFS-e — e anexa automaticamente na tarefa do ClickUp junto com
+o XML completo (`src/lib/pdf/danfe.ts`, `src/lib/pdf/danfse.ts`, geração
+com `pdfkit` + código de barras Code128 via `bwip-js` + QR code via
+`qrcode`, tudo puro JS sem dependência nativa — compatível com o runtime
+serverless da Vercel). Também dá pra baixar manualmente pela tela da nota
+(`/notas/:id` e `/notas-servico/:id`) ou direto pelas rotas
+`/api/notas/:id/pdf` e `/api/notas-servico/:id/pdf`.
+
+**Importante sobre fidelidade ao layout oficial:**
+
+- O PDF reproduz a **estrutura e o conteúdo completo** do DANFE/DANFSe
+  oficial (canhoto, dados do emitente/destinatário, itens, impostos,
+  transporte, código de barras da chave de acesso no DANFE, QR code no
+  DANFSe) — mas **não é uma réplica pixel-a-pixel** do leiaute regulamentar
+  (posições/medidas exatas em mm do Manual de Orientação do Contribuinte).
+  Serve como comprovante/registro interno para a contabilidade; não
+  substitui o DANFE emitido pelo sistema de origem quando a forma impressa
+  oficial for exigida (ex: acompanhar mercadoria em trânsito).
+- **DANFE (NF-e)** só fica disponível depois do XML completo (procNFe) —
+  o resumo (resNFe) não traz itens nem impostos, então não dá pra montar
+  o documento a partir dele. O botão/anexo aparece só depois da
+  manifestação de ciência ser processada.
+- **DANFSe (NFS-e)**: mesmo caveat da seção anterior sobre a estrutura do
+  XML nacional não ter sido validada contra um documento real — os campos
+  usam fallbacks defensivos, mas alguns podem vir vazios até essa
+  confirmação. O QR code codifica a chave de acesso (não uma URL de
+  consulta pública — o formato exato dessa URL no Ambiente de Dados
+  Nacional não foi confirmado).
+- Geração é *best-effort*: uma falha ao montar o PDF (campo inesperado no
+  XML) nunca derruba a sincronização nem a tarefa/nota já criada — só fica
+  sem o anexo de PDF (o XML continua disponível normalmente). Erros vão
+  pro log do servidor.
+
 ## Rodando localmente
 
 Pré-requisitos: Node.js 20+ e um banco Postgres acessível.

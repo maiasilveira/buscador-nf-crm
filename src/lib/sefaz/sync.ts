@@ -5,7 +5,10 @@ import { lerCertificadoPfx } from "@/lib/sefaz/cert";
 import { consultarDistribuicaoDFe } from "@/lib/sefaz/client";
 import { manifestarCienciaOperacao } from "@/lib/sefaz/manifestacao";
 import { parseProcNFe, parseResNFe, type NotaResumida } from "@/lib/sefaz/parse";
+import { parseProcNFeDanfe } from "@/lib/sefaz/parse-danfe";
+import { gerarDanfePdf } from "@/lib/pdf/danfe";
 import {
+  anexarPdfNaTarefa,
   anexarXmlNaTarefa,
   criarTarefaNotaFiscal,
   marcarStatusColetaCompleta,
@@ -272,6 +275,7 @@ async function upsertNotaCompleta(
     await marcarStatusColetaCompleta(existente.clickupTaskId).catch((err) =>
       console.error(`Falha ao atualizar Status de Coleta na tarefa existente:`, err)
     );
+    await anexarDanfeSeDisponivel(existente.clickupTaskId, completa.chaveAcesso, xmlCompleto);
   } else {
     await criarTarefaClickUpParaNota(
       existente.id,
@@ -312,6 +316,9 @@ async function criarTarefaClickUpParaNota(
       where: { id: notaId },
       data: { clickupTaskId: task.id, clickupTaskUrl: task.url, clickupSyncError: null },
     });
+    if (xmlCompleto) {
+      await anexarDanfeSeDisponivel(task.id, resumo.chaveAcesso, xmlCompleto);
+    }
   } catch (err) {
     const mensagem = err instanceof Error ? err.message : String(err);
     console.error(`Falha ao criar tarefa no ClickUp para nota ${resumo.chaveAcesso}:`, err);
@@ -319,6 +326,24 @@ async function criarTarefaClickUpParaNota(
       where: { id: notaId },
       data: { clickupSyncError: mensagem },
     });
+  }
+}
+
+/** Gera o DANFE em PDF a partir do XML completo e anexa na tarefa —
+ * best-effort: uma falha aqui (XML com campo inesperado, geração do PDF)
+ * nunca deve derrubar a sincronização nem impedir que a nota/tarefa já
+ * criada permaneça válida. */
+async function anexarDanfeSeDisponivel(
+  taskId: string,
+  chaveAcesso: string,
+  xmlCompleto: string
+): Promise<void> {
+  try {
+    const dados = parseProcNFeDanfe(xmlCompleto);
+    const pdf = await gerarDanfePdf(dados);
+    await anexarPdfNaTarefa(taskId, `DANFE-${chaveAcesso}.pdf`, pdf);
+  } catch (err) {
+    console.error(`Falha ao gerar/anexar DANFE da nota ${chaveAcesso}:`, err);
   }
 }
 

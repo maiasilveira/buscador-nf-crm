@@ -69,7 +69,7 @@ export default async function NotaDetalhePage({
       </Card>
 
       <Card className="space-y-3 text-sm">
-        <h2 className="font-semibold text-ink-secondary">Arquivos XML</h2>
+        <h2 className="font-semibold text-ink-secondary">Arquivos</h2>
         <div className="flex flex-wrap gap-3">
           {nota.xmlResumo && (
             <a
@@ -80,18 +80,27 @@ export default async function NotaDetalhePage({
             </a>
           )}
           {nota.xmlCompleto && (
-            <a
-              href={`/api/notas/${nota.id}/xml?tipo=completo`}
-              className="rounded-full border border-border px-3 py-1.5 text-xs font-medium hover:bg-black/[.03] dark:hover:bg-white/[.06]"
-            >
-              Baixar XML completo (procNFe)
-            </a>
+            <>
+              <a
+                href={`/api/notas/${nota.id}/xml?tipo=completo`}
+                className="rounded-full border border-border px-3 py-1.5 text-xs font-medium hover:bg-black/[.03] dark:hover:bg-white/[.06]"
+              >
+                Baixar XML completo (procNFe)
+              </a>
+              <a
+                href={`/api/notas/${nota.id}/pdf`}
+                className="rounded-full border border-accent px-3 py-1.5 text-xs font-medium text-accent hover:bg-accent/10"
+              >
+                Baixar PDF (DANFE)
+              </a>
+            </>
           )}
         </div>
         {!nota.xmlCompleto && (
           <p className="text-xs text-ink-muted">
-            O XML completo só fica disponível depois da manifestação de ciência ser
-            processada pela SEFAZ — normalmente na sincronização seguinte.
+            O XML completo (e o PDF/DANFE, que depende dele) só fica disponível depois da
+            manifestação de ciência ser processada pela SEFAZ — normalmente na sincronização
+            seguinte.
           </p>
         )}
       </Card>

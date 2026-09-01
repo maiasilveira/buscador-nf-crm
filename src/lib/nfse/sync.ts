@@ -3,7 +3,9 @@ import { prisma } from "@/lib/prisma";
 import { decryptBuffer, decryptString } from "@/lib/crypto";
 import { consultarDistribuicaoNfse } from "@/lib/nfse/client";
 import { parseNfse, type NotaServicoResumida } from "@/lib/nfse/parse";
-import { criarTarefaNotaServico } from "@/lib/clickup";
+import { parseNfseDanfse } from "@/lib/nfse/parse-danfse";
+import { gerarDanfsePdf } from "@/lib/pdf/danfse";
+import { anexarPdfNaTarefa, criarTarefaNotaServico } from "@/lib/clickup";
 
 const MAX_PAGINAS_POR_SYNC = 20;
 
@@ -143,6 +145,7 @@ async function upsertNotaServico(
       where: { id: nota.id },
       data: { clickupTaskId: task.id, clickupTaskUrl: task.url, clickupSyncError: null },
     });
+    await anexarDanfseSeDisponivel(task.id, resumo.chaveAcesso, xmlCompleto);
   } catch (err) {
     const mensagem = err instanceof Error ? err.message : String(err);
     console.error(`Falha ao criar tarefa no ClickUp para NFS-e ${resumo.chaveAcesso}:`, err);
@@ -150,6 +153,23 @@ async function upsertNotaServico(
   }
 
   return true;
+}
+
+/** Gera o DANFSe em PDF a partir do XML e anexa na tarefa — best-effort,
+ * igual ao equivalente de NF-e em src/lib/sefaz/sync.ts: nunca derruba a
+ * sincronização nem a tarefa já criada. */
+async function anexarDanfseSeDisponivel(
+  taskId: string,
+  chaveAcesso: string,
+  xmlCompleto: string
+): Promise<void> {
+  try {
+    const dados = parseNfseDanfse(xmlCompleto);
+    const pdf = await gerarDanfsePdf(dados);
+    await anexarPdfNaTarefa(taskId, `DANFSe-${chaveAcesso || "documento"}.pdf`, pdf);
+  } catch (err) {
+    console.error(`Falha ao gerar/anexar DANFSe da nota ${chaveAcesso}:`, err);
+  }
 }
 
 export async function sincronizarNfseTodasEmpresas(): Promise<ResultadoSyncNfse[]> {

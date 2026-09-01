@@ -261,17 +261,19 @@ export async function criarTarefaNotaServico(
   });
 }
 
-/** Anexa o XML completo da NF-e a uma tarefa já existente — usado quando o
- * procNFe só fica disponível depois da tarefa já ter sido criada a partir
- * do resumo (resNFe). */
-export async function anexarXmlNaTarefa(
+/** Anexa um arquivo genérico a uma tarefa do ClickUp. */
+async function anexarArquivoNaTarefa(
   taskId: string,
-  chaveAcesso: string,
-  xmlCompleto: string
+  nomeArquivo: string,
+  conteudo: string | Buffer,
+  mimeType: string
 ): Promise<void> {
   const form = new FormData();
-  const blob = new Blob([xmlCompleto], { type: "application/xml" });
-  form.append("attachment", blob, `${chaveAcesso}.xml`);
+  const blob =
+    typeof conteudo === "string"
+      ? new Blob([conteudo], { type: mimeType })
+      : new Blob([new Uint8Array(conteudo)], { type: mimeType });
+  form.append("attachment", blob, nomeArquivo);
 
   const res = await fetch(`${CLICKUP_API_BASE}/task/${taskId}/attachment`, {
     method: "POST",
@@ -283,6 +285,27 @@ export async function anexarXmlNaTarefa(
     const body = await res.text().catch(() => "");
     throw new Error(`Falha ao anexar arquivo (${res.status}): ${body}`);
   }
+}
+
+/** Anexa o XML completo da NF-e a uma tarefa já existente — usado quando o
+ * procNFe só fica disponível depois da tarefa já ter sido criada a partir
+ * do resumo (resNFe). */
+export async function anexarXmlNaTarefa(
+  taskId: string,
+  chaveAcesso: string,
+  xmlCompleto: string
+): Promise<void> {
+  await anexarArquivoNaTarefa(taskId, `${chaveAcesso}.xml`, xmlCompleto, "application/xml");
+}
+
+/** Anexa o PDF (DANFE/DANFSe) a uma tarefa — gerado a partir do XML
+ * completo, então só chamado quando ele já está disponível. */
+export async function anexarPdfNaTarefa(
+  taskId: string,
+  nomeArquivo: string,
+  pdf: Buffer
+): Promise<void> {
+  await anexarArquivoNaTarefa(taskId, nomeArquivo, pdf, "application/pdf");
 }
 
 /** Atualiza o campo "Status de Coleta" de uma tarefa já existente para

@@ -59,13 +59,21 @@ export default async function NotaServicoDetalhePage({
       </Card>
 
       <Card className="text-sm">
-        <h2 className="mb-2 font-semibold text-ink-secondary">Arquivo XML</h2>
-        <a
-          href={`/api/notas-servico/${nota.id}/xml`}
-          className="rounded-full border border-border px-3 py-1.5 text-xs font-medium hover:bg-black/[.03] dark:hover:bg-white/[.06]"
-        >
-          Baixar XML
-        </a>
+        <h2 className="mb-2 font-semibold text-ink-secondary">Arquivos</h2>
+        <div className="flex flex-wrap gap-3">
+          <a
+            href={`/api/notas-servico/${nota.id}/xml`}
+            className="rounded-full border border-border px-3 py-1.5 text-xs font-medium hover:bg-black/[.03] dark:hover:bg-white/[.06]"
+          >
+            Baixar XML
+          </a>
+          <a
+            href={`/api/notas-servico/${nota.id}/pdf`}
+            className="rounded-full border border-accent px-3 py-1.5 text-xs font-medium text-accent hover:bg-accent/10"
+          >
+            Baixar PDF (DANFSe)
+          </a>
+        </div>
       </Card>
     </div>
   );
