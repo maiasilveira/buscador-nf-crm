@@ -5,7 +5,11 @@ import { lerCertificadoPfx } from "@/lib/sefaz/cert";
 import { consultarDistribuicaoDFe } from "@/lib/sefaz/client";
 import { manifestarCienciaOperacao } from "@/lib/sefaz/manifestacao";
 import { parseProcNFe, parseResNFe, type NotaResumida } from "@/lib/sefaz/parse";
-import { anexarXmlNaTarefa, criarTarefaNotaFiscal } from "@/lib/clickup";
+import {
+  anexarXmlNaTarefa,
+  criarTarefaNotaFiscal,
+  marcarStatusColetaCompleta,
+} from "@/lib/clickup";
 import type { Ambiente } from "@/lib/types";
 
 const MAX_PAGINAS_POR_SYNC = 20; // trava de segurança contra loop infinito por rodada
@@ -261,6 +265,12 @@ async function upsertNotaCompleta(
   if (existente.clickupTaskId) {
     await anexarXmlNaTarefa(existente.clickupTaskId, completa.chaveAcesso, xmlCompleto).catch(
       (err) => console.error(`Falha ao anexar XML completo na tarefa existente:`, err)
+    );
+    // Sem isso, o campo "Status de Coleta" fica travado em "Resumo" pra
+    // sempre — o XML sobe como anexo, mas o card nunca reflete que a nota
+    // já está completa.
+    await marcarStatusColetaCompleta(existente.clickupTaskId).catch((err) =>
+      console.error(`Falha ao atualizar Status de Coleta na tarefa existente:`, err)
     );
   } else {
     await criarTarefaClickUpParaNota(

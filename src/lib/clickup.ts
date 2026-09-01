@@ -285,5 +285,35 @@ export async function anexarXmlNaTarefa(
   }
 }
 
+/** Atualiza o campo "Status de Coleta" de uma tarefa já existente para
+ * "XML completo" — usado junto com anexarXmlNaTarefa quando o procNFe chega
+ * depois da tarefa já ter sido criada a partir do resumo (resNFe). Sem
+ * isso, a tarefa fica com o XML completo anexado mas o campo continua
+ * mostrando "Resumo" pra sempre. */
+export async function marcarStatusColetaCompleta(taskId: string): Promise<void> {
+  const fields = await getListFields();
+  const field = findField(fields, "Status de Coleta");
+  if (!field) return; // campo ainda não criado na lista — ignora
+
+  const option = field.type_config?.options?.find(
+    (o) => o.name.trim().toLowerCase() === "xml completo"
+  );
+  if (!option) return;
+
+  const res = await fetch(`${CLICKUP_API_BASE}/task/${taskId}/field/${field.id}`, {
+    method: "POST",
+    headers: {
+      Authorization: apiToken(),
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ value: option.id }),
+  });
+
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    throw new Error(`Falha ao atualizar Status de Coleta (${res.status}): ${body}`);
+  }
+}
+
 // Mantido pro script de setup e uso futuro — reexportado por conveniência.
 export { CAMPOS_CLICKUP };
