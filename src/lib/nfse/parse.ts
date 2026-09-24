@@ -18,6 +18,13 @@ const parser = new XMLParser({
   parseTagValue: false,
 });
 
+// Validado em 2026-09 contra um XML real (produção, emissor Omie/Sistema
+// Nacional NFS-e): o nome do prestador NÃO vem em <prest> (dentro da DPS
+// enviada pelo emissor — só tem CNPJ/fone/email/regTrib) e sim em <emit>,
+// elemento irmão de <DPS> dentro de <infNFSe>, preenchido pelo Ambiente de
+// Dados Nacional a partir do cadastro do prestador. `prest.xNome` fica
+// vazio pra qualquer XML seguindo esse padrão.
+
 export type NotaServicoResumida = {
   chaveAcesso: string;
   numero: string;
@@ -42,6 +49,7 @@ export function parseNfse(xml: string): NotaServicoResumida {
 
   const prest = infDPS?.prest ?? {};
   const toma = infDPS?.toma ?? {};
+  const emit = infNFSe.emit ?? {};
   const valores = infDPS?.valores ?? infNFSe.valores ?? {};
 
   const valorServico = String(
@@ -57,8 +65,8 @@ export function parseNfse(xml: string): NotaServicoResumida {
   return {
     chaveAcesso,
     numero,
-    prestadorCnpj: String(prest.CNPJ ?? ""),
-    prestadorNome: String(prest.xNome ?? ""),
+    prestadorCnpj: String(prest.CNPJ ?? emit.CNPJ ?? ""),
+    prestadorNome: String(emit.xNome ?? prest.xNome ?? ""),
     tomadorCnpj: String(toma.CNPJ ?? ""),
     valorServico,
     discriminacao,

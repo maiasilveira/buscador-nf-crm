@@ -161,9 +161,21 @@ Esta parte é **mais incerta** que a de NF-e, por dois motivos:
    que relatos de terceiros sugeriam — por isso o parsing não depende mais
    do valor exato desse campo, só da estrutura (`LoteDFe` como lista, sem
    `Erros`). Qualquer resposta fora disso ainda derruba a sincronização com
-   um erro explícito em vez de virar silenciosamente "0 notas novas". O
-   parsing do XML da NFS-e em `src/lib/nfse/parse.ts` (estrutura
-   `DPS`/`NFSe`) continua sem confirmação equivalente.
+   um erro explícito em vez de virar silenciosamente "0 notas novas".
+
+   O parsing do XML em `src/lib/nfse/parse.ts` e `src/lib/nfse/parse-danfse.ts`
+   também já foi corrigido e validado contra um documento real (emissor
+   Omie/Sistema Nacional NFS-e, prefeitura de Itapira/SP): nome e endereço
+   do prestador não vêm de `<prest>` (dentro da DPS enviada pelo emissor —
+   só tem CNPJ/fone/email) e sim de `<emit>`, elemento irmão de `<DPS>`
+   preenchido pelo ADN a partir do cadastro nacional; `xLocPrestacao` é
+   filho direto de `<infNFSe>`, não de `<infDPS>`; e o bloco de endereço
+   "nacional" aninhado (cMun/UF/CEP) se chama `enderNac` em `<emit>` mas
+   `endNac` (sem "er") em `<toma><end>` — inconsistência real do XML, não
+   erro de digitação. **Ainda assim, isso foi validado contra um único
+   emissor/prefeitura** — outro software de emissão ou outro município
+   pode gerar XML com pequenas variações estruturais que ainda não foram
+   vistas.
 
 Antes de confiar 100% na cobertura:
 
@@ -173,10 +185,12 @@ Antes de confiar 100% na cobertura:
    "resposta não é JSON" ou "LoteDFe ausente" é o sinal mais forte de que o
    endpoint ou o schema mudaram de novo — antes da correção de 2026-09, esse
    caso nunca aparecia como erro, então **uma sincronização com erro em vez
-   de silenciosa já é uma melhora** (o problema virou visível). Se continuar
-   como "Sucesso" com 0 notas novas mesmo pra um prestador que deveria
-   aparecer, o próximo suspeito é o parsing do XML em
-   `src/lib/nfse/parse.ts`, não mais o cliente HTTP.
+   de silenciosa já é uma melhora** (o problema virou visível). Se a
+   sincronização capturar a nota mas campos como nome/endereço do prestador
+   ficarem vazios de novo (confira o PDF do DANFSe ou os campos
+   customizados no ClickUp), é sinal de que outro emissor usa uma variação
+   da estrutura ainda não coberta em `src/lib/nfse/parse.ts` /
+   `parse-danfse.ts`.
 2. Confira o manual de integração atual em <https://www.gov.br/nfse> (ou o
    Swagger em <https://www.nfse.gov.br/swagger/contribuintesissqn/>) e
    ajuste a URL/formato em `src/lib/nfse/client.ts` se necessário — a URL
