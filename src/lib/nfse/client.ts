@@ -3,22 +3,49 @@ import https from "node:https";
 import zlib from "node:zlib";
 
 // Cliente do Ambiente de Dados Nacional (ADN) do Sistema Nacional NFS-e —
-// o "Distribuição DFe" das notas de serviço, mantido pela Receita Federal/
-// ENCAT (Convênio NFS-e, Ajuste SINIEF 00/2022). Cobre só os municípios que
-// já aderiram ao padrão nacional — veja o README para o estado da adoção.
+// o "Distribuição de DFe" das notas de serviço, mantido pela Receita
+// Federal/CGNFS (Convênio NFS-e, Ajuste SINIEF 00/2022). Cobre só os
+// municípios que já aderiram ao padrão nacional — veja o README para o
+// estado da adoção.
 //
-// ⚠️ MAIS INCERTO QUE O CLIENTE DE NF-E (src/lib/sefaz/client.ts): o Sistema
-// Nacional NFS-e é recente e ainda em evolução, e a URL/formato exatos do
-// endpoint de distribuição abaixo **não foram confirmados contra o manual
-// de integração oficial vigente** (não estava disponível nesta sessão).
-// A implementação segue o padrão publicamente descrito para o ADN — REST/
-// JSON, autenticado com o mesmo certificado A1 (mTLS), paginação por NSU
-// (o mesmo conceito da Distribuição DFe da NF-e) — mas TRATE A URL E O
-// FORMATO DE RESPOSTA COMO PLACEHOLDER até validar com o manual técnico
-// atual em https://www.gov.br/nfse (ou com o provedor do seu município).
-// Ajuste `NFSE_ADN_BASE_URL` no `.env` sem precisar mexer no código.
+// ⚠️ Endpoint corrigido em 2026-09 depois de uma sincronização real que
+// nunca capturou nenhuma NFS-e: a URL usada antes (`/contribuinte/dfe?
+// cnpj=...&nsu=...`) não existe na API — qualquer chamada batia 404, e o
+// código tratava 404 como "nenhum documento novo" (mesmo comportamento da
+// Distribuição DFe da NF-e), mascarando o erro como sucesso silencioso.
+//
+// A URL/formato abaixo seguem a rota documentada no Swagger público
+// (https://www.nfse.gov.br/swagger/contribuintesissqn/#/DFe — ex.:
+// https://adn.nfse.gov.br/contribuintes/DFe/0) e relatos de quem já
+// integrou (ex.: https://www.tabnews.com.br/Crazynds/minha-saga-com-a-
+// emissao-de-nfs-e). O NSU vai no path (não em query string), e o CNPJ na
+// query `cnpjConsulta`. O formato de resposta (`StatusProcessamento`,
+// `LoteDFe`, `Erros`, campos em PascalCase) e os códigos de status 137
+// ("sem documentos") / 138 ("documentos localizados") — os mesmos cStat já
+// usados na Distribuição DFe da NF-e — vêm dos mesmos relatos, já que o
+// Manual dos Contribuintes oficial não documenta o schema da resposta e o
+// Swagger completo fica atrás de autenticação por certificado.
+//
+// AINDA ASSIM NÃO CONFIRMADO CONTRA UMA RESPOSTA REAL nesta sessão (sem
+// acesso de rede a adn.nfse.gov.br nem a um certificado A1 de teste aqui).
+// Ao contrário da versão anterior, agora qualquer resposta em formato
+// inesperado derruba com erro explícito (em vez de virar "0 notas novas"
+// silencioso) — se a sincronização real continuar sem capturar nada,
+// o erro em `lastSyncNfseError`/`SyncLog.mensagem` deve dizer exatamente
+// o que veio de diferente do esperado. Ajuste `NFSE_ADN_BASE_URL` no
+// `.env` sem precisar mexer no código.
 
 const DEFAULT_BASE_URL = "https://adn.nfse.gov.br";
+
+// Os mesmos cStat da Distribuição DFe da NF-e (Nota Técnica 2014.002),
+// reaproveitados pelo ADN.
+const STATUS_SEM_DOCUMENTOS = 137;
+const STATUS_DOCUMENTOS_LOCALIZADOS = 138;
+
+// Tamanho de lote documentado — um lote cheio é o único sinal disponível de
+// que provavelmente há mais documentos a buscar (a resposta não expõe um
+// "maxNSU" explícito como a Distribuição DFe da NF-e).
+const DOCUMENTOS_POR_LOTE = 50;
 
 function baseUrl(): string {
   return process.env.NFSE_ADN_BASE_URL || DEFAULT_BASE_URL;
@@ -67,13 +94,23 @@ function getRest(params: {
 }
 
 /** Tenta descompactar como gzip; se não for gzip, assume texto puro (o
- * formato exato de compactação do payload não foi confirmado). */
+ * relato de integração citado no topo do arquivo descreve o payload como
+ * gzip+base64, mas mantemos o fallback por segurança). */
 function decodeDocPayload(base64: string): string {
   const buf = Buffer.from(base64, "base64");
   try {
     return zlib.gunzipSync(buf).toString("utf8");
   } catch {
     return buf.toString("utf8");
+  }
+}
+
+function maiorNsu(atual: string, candidato: string): string {
+  if (!candidato) return atual;
+  try {
+    return BigInt(candidato) > BigInt(atual || "0") ? candidato : atual;
+  } catch {
+    return atual; // NSU em formato inesperado — ignora em vez de derrubar a sincronização inteira
   }
 }
 
@@ -86,17 +123,13 @@ export async function consultarDistribuicaoNfse(params: {
   pfx: Buffer;
   passphrase: string;
 }): Promise<RespostaDistribuicaoNfse> {
-  const url = `${baseUrl()}/contribuinte/dfe?cnpj=${params.cnpj}&nsu=${params.ultNsu}`;
+  const nsuConsulta = params.ultNsu || "0";
+  const url = `${baseUrl()}/contribuintes/DFe/${encodeURIComponent(nsuConsulta)}?cnpjConsulta=${encodeURIComponent(params.cnpj)}`;
 
   const { status, body } = await getRest({ url, pfx: params.pfx, passphrase: params.passphrase });
 
-  if (status === 404) {
-    // Sem documentos novos — mesmo comportamento de "nenhum documento
-    // localizado" da NF-e.
-    return { ultNSU: params.ultNsu, maxNSU: params.ultNsu, documentos: [] };
-  }
   if (status >= 400) {
-    throw new Error(`ADN NFS-e respondeu ${status}: ${body.slice(0, 500)}`);
+    throw new Error(`ADN NFS-e respondeu ${status} em ${url}: ${body.slice(0, 500)}`);
   }
 
   let parsed: unknown;
@@ -104,26 +137,45 @@ export async function consultarDistribuicaoNfse(params: {
     parsed = JSON.parse(body);
   } catch {
     throw new Error(
-      `Resposta do ADN NFS-e não é JSON — endpoint/formato provavelmente desatualizado (veja o aviso em src/lib/nfse/client.ts): ${body.slice(0, 500)}`
+      `Resposta do ADN NFS-e não é JSON (HTTP ${status}) — endpoint/formato provavelmente desatualizado (veja o aviso no topo de src/lib/nfse/client.ts): ${body.slice(0, 500)}`
     );
   }
 
   const obj = parsed as {
-    ultNSU?: string;
-    maxNSU?: string;
-    lote?: { nsu?: string; docNFSe?: string }[];
+    StatusProcessamento?: number;
+    LoteDFe?: { NSU?: string; ChaveAcesso?: string; ArquivoXml?: string; TipoDocumento?: string }[];
+    Erros?: unknown[];
   };
 
-  const documentos: DocumentoNfse[] = (obj.lote ?? [])
-    .filter((item) => item.docNFSe)
+  if (obj.StatusProcessamento === STATUS_SEM_DOCUMENTOS) {
+    return { ultNSU: nsuConsulta, maxNSU: nsuConsulta, documentos: [] };
+  }
+
+  if (obj.StatusProcessamento !== STATUS_DOCUMENTOS_LOCALIZADOS) {
+    throw new Error(
+      `ADN NFS-e retornou StatusProcessamento=${obj.StatusProcessamento ?? "ausente"} inesperado (Erros=${JSON.stringify(
+        obj.Erros ?? []
+      )}) — endpoint/formato provavelmente desatualizado (veja o aviso no topo de src/lib/nfse/client.ts): ${body.slice(0, 500)}`
+    );
+  }
+
+  const lote = obj.LoteDFe ?? [];
+  const documentos: DocumentoNfse[] = lote
+    .filter((item) => item.ArquivoXml)
     .map((item) => ({
-      nsu: String(item.nsu ?? ""),
-      xml: decodeDocPayload(item.docNFSe as string),
+      nsu: String(item.NSU ?? ""),
+      xml: decodeDocPayload(item.ArquivoXml as string),
     }));
 
+  const ultNSU = documentos.reduce((max, doc) => maiorNsu(max, doc.nsu), nsuConsulta);
+  const podeTerMais = lote.length >= DOCUMENTOS_POR_LOTE;
+
   return {
-    ultNSU: String(obj.ultNSU ?? params.ultNsu),
-    maxNSU: String(obj.maxNSU ?? obj.ultNSU ?? params.ultNsu),
+    ultNSU,
+    // Sem um "maxNSU" explícito na resposta, um lote cheio é tratado como
+    // "provavelmente há mais" — incrementa pra forçar outra iteração do
+    // loop de paginação em sincronizarNfseEmpresa (src/lib/nfse/sync.ts).
+    maxNSU: podeTerMais ? String(BigInt(ultNSU || "0") + BigInt(1)) : ultNSU,
     documentos,
   };
 }

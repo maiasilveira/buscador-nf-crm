@@ -145,24 +145,39 @@ Esta parte é **mais incerta** que a de NF-e, por dois motivos:
    consulta — não é um bug, é a fronteira atual da adoção do padrão. Se sua
    empresa recebe muitos serviços de municípios pequenos ou que ainda não
    aderiram, o `buscador-nf-crm` não vai enxergar essas notas.
-2. **Endpoint/formato não validados**: a URL e o formato de resposta em
-   `src/lib/nfse/client.ts` (`NFSE_ADN_BASE_URL`, hoje
-   `https://adn.nfse.gov.br`) seguem o padrão publicamente descrito para o
-   ADN (REST/JSON, mTLS com o certificado A1, paginação por NSU — o mesmo
-   conceito da Distribuição DFe da NF-e), mas **não foram confirmados
-   contra o manual de integração oficial vigente**, que não estava
-   disponível nesta sessão. O mesmo vale para o parsing do XML da NFS-e em
-   `src/lib/nfse/parse.ts` (estrutura `DPS`/`NFSe`).
+2. **Endpoint/formato ainda não confirmados contra uma resposta real**: em
+   2026-09, uma checagem em produção mostrou 0 NFS-e capturadas apesar de
+   toda sincronização terminar como "Sucesso" — a causa era a URL em
+   `src/lib/nfse/client.ts` (`/contribuinte/dfe?cnpj=...&nsu=...`), que não
+   existe na API: toda chamada batia 404, e o código tratava 404 como
+   "nenhum documento novo" (mesmo comportamento do 656 da NF-e), mascarando
+   o erro como sucesso silencioso. Foi corrigido para a rota documentada no
+   Swagger público do ADN (`/contribuintes/DFe/{NSU}?cnpjConsulta=...`,
+   formato de resposta `StatusProcessamento`/`LoteDFe`/`Erros`), mas isso
+   ainda **não foi validado contra uma chamada real** — o Manual dos
+   Contribuintes oficial não documenta o schema da resposta, e o Swagger
+   completo fica atrás de autenticação por certificado. Qualquer resposta
+   fora do formato esperado agora derruba a sincronização com um erro
+   explícito em vez de virar silenciosamente "0 notas novas" — é assim que
+   dá pra saber se ainda há algo errado. O mesmo vale para o parsing do XML
+   da NFS-e em `src/lib/nfse/parse.ts` (estrutura `DPS`/`NFSe`).
 
-Antes de operar em produção:
+Antes de confiar 100% na cobertura:
 
-1. Confira o manual de integração atual em <https://www.gov.br/nfse> e
+1. Rode "Sincronizar agora" numa empresa de teste (idealmente uma com
+   prestador em município que você sabe que aderiu ao padrão nacional) e
+   acompanhe `lastSyncNfseError` na tela de Empresas. Um erro do tipo
+   "resposta não é JSON" ou "StatusProcessamento inesperado" é o sinal mais
+   forte de que o endpoint ou o schema mudaram — antes da correção, esse
+   caso nunca aparecia como erro, então **se hoje aparecer uma sincronização
+   com erro em vez de silenciosa, isso já é uma melhora** (o problema virou
+   visível). Se continuar como "Sucesso" com 0 notas novas mesmo pra um
+   prestador que deveria aparecer, o próximo suspeito é o schema de
+   `LoteDFe`/campos em `src/lib/nfse/client.ts`.
+2. Confira o manual de integração atual em <https://www.gov.br/nfse> (ou o
+   Swagger em <https://www.nfse.gov.br/swagger/contribuintesissqn/>) e
    ajuste a URL/formato em `src/lib/nfse/client.ts` se necessário — a URL
    base é configurável via `NFSE_ADN_BASE_URL` sem precisar mexer no código.
-2. Rode "Sincronizar agora" numa empresa de teste e acompanhe
-   `lastSyncNfseError` na tela de Empresas. Um erro do tipo "resposta não é
-   JSON" ou "formato inesperado" é o sinal mais forte de que o endpoint ou
-   o schema mudaram.
 3. Se a cobertura parcial for um problema real pro seu caso (muitos
    prestadores em municípios ainda não aderidos), considere complementar
    com um provedor agregador pago (Focus NFe, PlugNotas, NFe.io) — eles já
