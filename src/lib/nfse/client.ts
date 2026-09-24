@@ -72,6 +72,7 @@ function getRest(params: {
     const req = https.request(
       {
         hostname: url.hostname,
+        port: url.port || 443,
         path: url.pathname + url.search,
         method: "GET",
         pfx: params.pfx,
