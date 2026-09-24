@@ -14,33 +14,28 @@ import zlib from "node:zlib";
 // código tratava 404 como "nenhum documento novo" (mesmo comportamento da
 // Distribuição DFe da NF-e), mascarando o erro como sucesso silencioso.
 //
-// A URL/formato abaixo seguem a rota documentada no Swagger público
-// (https://www.nfse.gov.br/swagger/contribuintesissqn/#/DFe — ex.:
-// https://adn.nfse.gov.br/contribuintes/DFe/0) e relatos de quem já
-// integrou (ex.: https://www.tabnews.com.br/Crazynds/minha-saga-com-a-
-// emissao-de-nfs-e). O NSU vai no path (não em query string), e o CNPJ na
-// query `cnpjConsulta`. O formato de resposta (`StatusProcessamento`,
-// `LoteDFe`, `Erros`, campos em PascalCase) e os códigos de status 137
-// ("sem documentos") / 138 ("documentos localizados") — os mesmos cStat já
-// usados na Distribuição DFe da NF-e — vêm dos mesmos relatos, já que o
-// Manual dos Contribuintes oficial não documenta o schema da resposta e o
-// Swagger completo fica atrás de autenticação por certificado.
+// A URL corrigida (`/contribuintes/DFe/{NSU}?cnpjConsulta=...`, NSU no
+// path e CNPJ em query string) **já foi confirmada contra uma resposta
+// real de produção**: o ADN passou a retornar `LoteDFe` com documentos de
+// verdade (`NSU`, `ChaveAcesso`, `TipoDocumento: "NFSE"`, `ArquivoXml`).
+// O único ponto que a primeira correção errou (também descoberto contra
+// produção): `StatusProcessamento` vem como **string** (ex.:
+// "DOCUMENTOS_LOCALIZADOS"), não como os códigos numéricos cStat 137/138
+// da Distribuição DFe da NF-e que relatos de terceiros sugeriam. Por isso
+// o parsing abaixo não depende do valor exato de `StatusProcessamento` —
+// usa a presença de `LoteDFe` (lista) e a ausência de `Erros` como sinal
+// de resposta válida, já que o vocabulário completo de status (em especial
+// o de "sem documentos novos") continua não documentado publicamente (o
+// Manual dos Contribuintes oficial não descreve o schema da resposta, e o
+// Swagger completo fica atrás de autenticação por certificado).
 //
-// AINDA ASSIM NÃO CONFIRMADO CONTRA UMA RESPOSTA REAL nesta sessão (sem
-// acesso de rede a adn.nfse.gov.br nem a um certificado A1 de teste aqui).
-// Ao contrário da versão anterior, agora qualquer resposta em formato
-// inesperado derruba com erro explícito (em vez de virar "0 notas novas"
-// silencioso) — se a sincronização real continuar sem capturar nada,
-// o erro em `lastSyncNfseError`/`SyncLog.mensagem` deve dizer exatamente
-// o que veio de diferente do esperado. Ajuste `NFSE_ADN_BASE_URL` no
-// `.env` sem precisar mexer no código.
+// Qualquer resposta em formato realmente inesperado (sem `LoteDFe` como
+// lista, ou com `Erros` preenchido) derruba a sincronização com um erro
+// explícito em vez de virar "0 notas novas" silencioso — é assim que se
+// descobriu o bug da URL original. Ajuste `NFSE_ADN_BASE_URL` no `.env`
+// sem precisar mexer no código.
 
 const DEFAULT_BASE_URL = "https://adn.nfse.gov.br";
-
-// Os mesmos cStat da Distribuição DFe da NF-e (Nota Técnica 2014.002),
-// reaproveitados pelo ADN.
-const STATUS_SEM_DOCUMENTOS = 137;
-const STATUS_DOCUMENTOS_LOCALIZADOS = 138;
 
 // Tamanho de lote documentado — um lote cheio é o único sinal disponível de
 // que provavelmente há mais documentos a buscar (a resposta não expõe um
@@ -143,24 +138,33 @@ export async function consultarDistribuicaoNfse(params: {
   }
 
   const obj = parsed as {
-    StatusProcessamento?: number;
+    StatusProcessamento?: string | number;
     LoteDFe?: { NSU?: string; ChaveAcesso?: string; ArquivoXml?: string; TipoDocumento?: string }[];
     Erros?: unknown[];
   };
 
-  if (obj.StatusProcessamento === STATUS_SEM_DOCUMENTOS) {
-    return { ultNSU: nsuConsulta, maxNSU: nsuConsulta, documentos: [] };
-  }
-
-  if (obj.StatusProcessamento !== STATUS_DOCUMENTOS_LOCALIZADOS) {
+  // `StatusProcessamento` é uma string (ex.: "DOCUMENTOS_LOCALIZADOS"), não
+  // o código numérico cStat 137/138 da Distribuição DFe da NF-e como se
+  // supôs antes de validar contra uma resposta real — o vocabulário
+  // completo de valores (em especial o de "sem documentos novos") segue
+  // não documentado publicamente. Por isso não filtramos por valor exato:
+  // confiamos na estrutura (`LoteDFe` como lista, sem `Erros`) em vez do
+  // texto do status.
+  if (!Array.isArray(obj.LoteDFe)) {
     throw new Error(
-      `ADN NFS-e retornou StatusProcessamento=${obj.StatusProcessamento ?? "ausente"} inesperado (Erros=${JSON.stringify(
-        obj.Erros ?? []
+      `Resposta do ADN NFS-e em formato inesperado (LoteDFe ausente ou não é lista; StatusProcessamento=${JSON.stringify(
+        obj.StatusProcessamento
       )}) — endpoint/formato provavelmente desatualizado (veja o aviso no topo de src/lib/nfse/client.ts): ${body.slice(0, 500)}`
     );
   }
 
-  const lote = obj.LoteDFe ?? [];
+  if (Array.isArray(obj.Erros) && obj.Erros.length > 0) {
+    throw new Error(
+      `ADN NFS-e retornou Erros (StatusProcessamento=${JSON.stringify(obj.StatusProcessamento)}): ${JSON.stringify(obj.Erros)}`
+    );
+  }
+
+  const lote = obj.LoteDFe;
   const documentos: DocumentoNfse[] = lote
     .filter((item) => item.ArquivoXml)
     .map((item) => ({
