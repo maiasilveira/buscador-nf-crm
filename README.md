@@ -286,6 +286,17 @@ pequenos até não sobrar nenhuma (`src/app/actions/pdfs.ts`,
 `gerarPdfsRetroativosAction`). O campo `pdfAnexado` no banco marca quais
 notas já têm o PDF, pra não gerar/anexar duplicado numa próxima rodada.
 
+Esse mesmo botão também é o mecanismo usado pra **reprocessar NFS-e depois
+de uma correção no parser**: a migração `20260924140457_reset_pdf_anexado_nfse`
+resetou `pdfAnexado` pra `false` em toda `NotaServico` existente depois do
+bug de 2026-09 (prestador vindo em branco — veja a seção do Sistema
+Nacional NFS-e acima), o que fez o botão reprocessar todas elas — não só
+reanexando o DANFSe corrigido, mas também reenviando "Razão Social
+Emitente/Prestador" pro ClickUp (`anexarDanfseSeDisponivel` em
+`src/lib/nfse/sync.ts` cuida dos dois). Se um futuro bug de parsing de
+NFS-e for corrigido, o mesmo padrão serve: uma migração de dados que
+reseta `pdfAnexado` das notas afetadas, sem precisar de mecanismo novo.
+
 ## Rodando localmente
 
 Pré-requisitos: Node.js 20+ e um banco Postgres acessível.

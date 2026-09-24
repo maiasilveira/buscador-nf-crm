@@ -338,5 +338,34 @@ export async function marcarStatusColetaCompleta(taskId: string): Promise<void> 
   }
 }
 
+/** Atualiza um campo de texto (short_text) já existente numa tarefa — usado
+ * pra corrigir campos preenchidos errado na criação (ex.: nome do prestador
+ * de uma NFS-e, quando o parser é corrigido depois da tarefa já existir).
+ * Best-effort, igual aos outros helpers de campo: campo ausente na lista é
+ * ignorado. */
+export async function atualizarCampoTextoTarefa(
+  taskId: string,
+  nomeCampo: string,
+  valor: string
+): Promise<void> {
+  const fields = await getListFields();
+  const field = findField(fields, nomeCampo);
+  if (!field) return; // campo ainda não criado na lista — ignora
+
+  const res = await fetch(`${CLICKUP_API_BASE}/task/${taskId}/field/${field.id}`, {
+    method: "POST",
+    headers: {
+      Authorization: apiToken(),
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ value: valor }),
+  });
+
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    throw new Error(`Falha ao atualizar campo "${nomeCampo}" (${res.status}): ${body}`);
+  }
+}
+
 // Mantido pro script de setup e uso futuro — reexportado por conveniência.
 export { CAMPOS_CLICKUP };

@@ -1,0 +1,15 @@
+-- Migração de dados (sem mudança de schema): um bug em 2026-09 fazia o
+-- nome/endereço do prestador ficar em branco no ClickUp e no DANFSe de
+-- toda NFS-e capturada (ver src/lib/nfse/parse.ts / parse-danfse.ts) —
+-- o parser olhava pro <prest> da DPS, mas esses campos vêm do <emit>,
+-- preenchido pelo Ambiente de Dados Nacional a partir do cadastro do
+-- prestador. Corrigido no código, mas as tarefas já criadas continuam
+-- com os dados errados até serem reprocessadas.
+--
+-- Reseta `pdfAnexado` pra false em toda NotaServico já capturada, o que
+-- faz o botão "Gerar PDFs" (backfill retroativo, ver
+-- src/app/actions/pdfs.ts) reprocessar todas elas: reanexa o DANFSe
+-- corrigido e reenvia "Razão Social Emitente/Prestador" pro ClickUp (ver
+-- anexarDanfseSeDisponivel em src/lib/nfse/sync.ts). Não afeta NotaFiscal
+-- (NF-e) — o bug era específico do parsing de NFS-e.
+UPDATE "NotaServico" SET "pdfAnexado" = false;

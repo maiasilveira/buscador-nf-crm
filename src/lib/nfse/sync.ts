@@ -5,7 +5,7 @@ import { consultarDistribuicaoNfse } from "@/lib/nfse/client";
 import { parseNfse, type NotaServicoResumida } from "@/lib/nfse/parse";
 import { parseNfseDanfse } from "@/lib/nfse/parse-danfse";
 import { gerarDanfsePdf } from "@/lib/pdf/danfse";
-import { anexarPdfNaTarefa, criarTarefaNotaServico } from "@/lib/clickup";
+import { anexarPdfNaTarefa, atualizarCampoTextoTarefa, criarTarefaNotaServico } from "@/lib/clickup";
 
 const MAX_PAGINAS_POR_SYNC = 20;
 
@@ -159,7 +159,15 @@ async function upsertNotaServico(
  * igual ao equivalente de NF-e em src/lib/sefaz/sync.ts: nunca derruba a
  * sincronização nem a tarefa já criada. Marca `pdfAnexado` só no sucesso —
  * é o que o backfill retroativo usa pra saber quais notas processar.
- * Exportada porque o backfill a reusa diretamente. */
+ * Exportada porque o backfill a reusa diretamente.
+ *
+ * Também reenvia "Razão Social Emitente/Prestador" pro ClickUp a partir do
+ * mesmo parsing usado no PDF — criarTarefaNotaServico já preenche esse
+ * campo na criação da tarefa, mas essa chamada aqui é o que corrige
+ * tarefas antigas quando o parser é ajustado depois (ex.: bug de 2026-09
+ * em que o nome do prestador vinha vazio — ver src/lib/nfse/parse-danfse.ts
+ * e o backfill em src/app/actions/pdfs.ts). Nunca falha a função por causa
+ * disso: só o anexo do PDF marca `pdfAnexado`. */
 export async function anexarDanfseSeDisponivel(
   notaId: string,
   taskId: string,
@@ -170,6 +178,13 @@ export async function anexarDanfseSeDisponivel(
     const dados = parseNfseDanfse(xmlCompleto);
     const pdf = await gerarDanfsePdf(dados);
     await anexarPdfNaTarefa(taskId, `DANFSe-${chaveAcesso || "documento"}.pdf`, pdf);
+    if (dados.prestadorNome) {
+      await atualizarCampoTextoTarefa(taskId, "Razão Social Emitente/Prestador", dados.prestadorNome).catch(
+        (err) => {
+          console.error(`Falha ao atualizar Razão Social do prestador na tarefa ${taskId}:`, err);
+        }
+      );
+    }
     await prisma.notaServico.update({ where: { id: notaId }, data: { pdfAnexado: true } });
     return true;
   } catch (err) {
