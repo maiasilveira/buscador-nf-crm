@@ -22,6 +22,7 @@ const ACAO_LABEL: Record<AcaoAuditoria, string> = {
   SYNC_DISPARADA_MANUAL: "Sincronização manual",
   SYNC_DISPARADA_CRON: "Sincronização automática (cron)",
   PDFS_RETROATIVOS_GERADOS: "PDFs retroativos gerados",
+  MANIFESTACOES_RETENTADAS: "Manifestações retentadas",
 };
 
 const ACAO_CRITICA = new Set<AcaoAuditoria>([

@@ -134,6 +134,38 @@ mensagem de erro) ajuda a ajustar `src/lib/sefaz/client.ts` (consulta) ou
 inesperado. Certificados costumam expirar em 1 ano — a tela de Empresas
 mostra a validade e sinaliza quando um certificado está expirado.
 
+### Notas presas em "Resumo" (manifestação de ciência rejeitada)
+
+Bug encontrado e corrigido em 2026-11, analisando produção: **32 NF-e
+estavam presas em "Resumo" pra sempre** (XML completo nunca chegava),
+quase todas da mesma empresa. Causa: `src/lib/sefaz/sync.ts` chamava
+`manifestarCienciaOperacao` mas **nunca conferia o retorno** — a função só
+lança exceção em erro de rede/HTTP, uma rejeição da SEFAZ (cStat fora de
+135/136) vem como retorno normal (`sucesso: false`), que o código
+simplesmente ignorava e marcava `manifestadaEm` de qualquer jeito. A nota
+ficava marcada como "manifestada" mesmo quando a SEFAZ rejeitou o evento, e
+nunca mais era re-tentada — sem nenhum sinal visível do motivo real (só ia
+pro log do servidor, inacessível depois).
+
+Corrigido: o retorno agora é sempre conferido (`processarResultadoManifestacao`
+em `src/lib/sefaz/sync.ts`), e **cStat 573 ("Duplicidade de Evento") é
+tratado como sucesso** — se a mesma chave já foi manifestada por outro
+sistema (ex.: o Qive, mencionado acima, que consulta o mesmo CNPJ), a
+ciência já está dada perante a SEFAZ independente de quem manifestou, e o
+XML completo deve aparecer numa consulta futura da Distribuição DFe de
+qualquer forma. Qualquer outra rejeição agora fica visível em
+`NotaFiscal.manifestacaoErro` — exibido na página da nota (seção
+"Manifestação") em vez de ficar só no log do servidor.
+
+Pra reprocessar as que já ficaram presas antes dessa correção, tem um botão
+**"Retentar manifestações (N pendentes)"** na tela de Sincronização (só
+ADMIN) — reenvia a manifestação pras NF-e com `status: "RESUMO"`, em lotes
+pequenos. Diferente do backfill de PDF: uma manifestação aceita **não**
+tira a nota de "Resumo" na hora (só a próxima sincronização normal, quando
+a Distribuição DFe finalmente entrega o procNFe) — então o botão não vai a
+"0 pendentes" sozinho nessa mesma rodada; ele faz uma varredura completa
+das notas presas e para.
+
 ## ⚠️⚠️ Sobre a integração com o Sistema Nacional NFS-e — leia antes de usar
 
 Esta parte é **mais incerta** que a de NF-e, por dois motivos:

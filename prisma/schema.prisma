@@ -127,6 +127,15 @@ model NotaFiscal {
 
   manifestadaEm DateTime?
 
+  // Motivo da SEFAZ (cStat + xMotivo) quando a manifestação de ciência é
+  // rejeitada — sem isso não dava pra saber por que uma nota ficava presa
+  // em "Resumo" pra sempre (o erro só ia pro log do servidor, que ninguém
+  // consegue ver depois). null quando nunca houve erro, ou quando um erro
+  // anterior foi resolvido num retry bem-sucedido. Ver
+  // src/lib/sefaz/manifestacao.ts e retentarManifestacao em
+  // src/lib/sefaz/sync.ts.
+  manifestacaoErro String?
+
   clickupTaskId  String?
   clickupTaskUrl String?
   clickupSyncError String?

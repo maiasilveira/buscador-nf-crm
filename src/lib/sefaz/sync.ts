@@ -3,7 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { decryptBuffer, decryptString } from "@/lib/crypto";
 import { lerCertificadoPfx } from "@/lib/sefaz/cert";
 import { consultarDistribuicaoDFe } from "@/lib/sefaz/client";
-import { manifestarCienciaOperacao } from "@/lib/sefaz/manifestacao";
+import { manifestarCienciaOperacao, type ResultadoManifestacao } from "@/lib/sefaz/manifestacao";
 import { parseProcNFe, parseResNFe, type NotaResumida } from "@/lib/sefaz/parse";
 import { parseProcNFeDanfe } from "@/lib/sefaz/parse-danfe";
 import { gerarDanfePdf } from "@/lib/pdf/danfe";
@@ -25,6 +25,14 @@ const MAX_PAGINAS_POR_SYNC = 20; // trava de segurança contra loop infinito por
 // novos. Ver NT 2014.002 (Distribuição DFe).
 const CSTAT_CONSUMO_INDEVIDO = "656";
 const ESPERA_CONSUMO_INDEVIDO_MS = 60 * 60 * 1000; // 1 hora, conforme a própria mensagem da SEFAZ
+
+// "Duplicidade de Evento" — a SEFAZ já tem esse evento de Ciência da
+// Operação registrado pra essa chave (pode ter sido manifestada por outro
+// sistema, ex. um serviço pago como o Qive, que também consulta o mesmo
+// CNPJ). Nesse caso a ciência JÁ está dada perante a SEFAZ independente de
+// quem manifestou — então, do nosso lado, tratamos como sucesso: o XML
+// completo deve aparecer numa consulta futura da Distribuição DFe.
+const CSTAT_MANIFESTACAO_DUPLICADA = "573";
 
 function formatarEspera(ate: Date): string {
   const minutos = Math.max(1, Math.ceil((ate.getTime() - Date.now()) / 60000));
@@ -131,7 +139,7 @@ export async function sincronizarEmpresa(empresaId: string): Promise<ResultadoSy
           // próxima consulta (a SEFAZ não libera o procNFe na mesma
           // resposta da manifestação).
           try {
-            await manifestarCienciaOperacao({
+            const resultado = await manifestarCienciaOperacao({
               ambiente,
               uf: empresa.uf,
               cnpj: empresa.cnpj,
@@ -142,12 +150,13 @@ export async function sincronizarEmpresa(empresaId: string): Promise<ResultadoSy
               certPem,
               sequencia: sequenciaEvento++,
             });
-            await prisma.notaFiscal.update({
-              where: { chaveAcesso: resumo.chaveAcesso },
-              data: { manifestadaEm: new Date() },
-            });
+            await processarResultadoManifestacao(resumo.chaveAcesso, resultado);
           } catch (err) {
+            const mensagem = err instanceof Error ? err.message : String(err);
             console.error(`Falha ao manifestar ciência de ${resumo.chaveAcesso}:`, err);
+            await prisma.notaFiscal
+              .update({ where: { chaveAcesso: resumo.chaveAcesso }, data: { manifestacaoErro: mensagem } })
+              .catch(() => {});
           }
         } else if (doc.schema.startsWith("procNFe")) {
           const completa = parseProcNFe(doc.xml);
@@ -185,6 +194,101 @@ export async function sincronizarEmpresa(empresaId: string): Promise<ResultadoSy
       data: { status: "ERRO", finishedAt: new Date(), notasNovas, mensagem },
     });
     return { empresaId, notasNovas, erro: mensagem };
+  }
+}
+
+/** Interpreta o resultado de manifestarCienciaOperacao e grava no banco.
+ *
+ * Bug corrigido em 2026-11: antes, o retorno de manifestarCienciaOperacao
+ * (que nunca lança exceção numa rejeição da SEFAZ — só retorna
+ * `sucesso: false`) era completamente ignorado pelo chamador, que marcava
+ * `manifestadaEm` incondicionalmente após a chamada. Uma rejeição real
+ * (ex.: erro de assinatura, sequencia inválida) ficava disfarçada de
+ * sucesso, e a nota nunca mais era re-tentada — presa em "Resumo" pra
+ * sempre, sem nenhum sinal visível do motivo. Encontrado analisando
+ * produção: 32 NF-e presas em "Resumo", a maioria da mesma empresa.
+ *
+ * Exportada pra poder ser testada isoladamente (a chamada real à SEFAZ em
+ * manifestarCienciaOperacao não dá pra exercitar fora de produção). */
+export async function processarResultadoManifestacao(
+  chaveAcesso: string,
+  resultado: ResultadoManifestacao
+): Promise<boolean> {
+  if (resultado.sucesso || resultado.statusCode === CSTAT_MANIFESTACAO_DUPLICADA) {
+    await prisma.notaFiscal.update({
+      where: { chaveAcesso },
+      data: { manifestadaEm: new Date(), manifestacaoErro: null },
+    });
+    return true;
+  }
+
+  await prisma.notaFiscal.update({
+    where: { chaveAcesso },
+    data: { manifestacaoErro: `cStat ${resultado.statusCode}: ${resultado.motivo}` },
+  });
+  return false;
+}
+
+/** Reenvia a manifestação de ciência de uma nota presa em "Resumo" — usado
+ * pelo botão "Retentar manifestações" (Sincronização, admin), pra notas
+ * cuja primeira tentativa falhou (ver `manifestacaoErro`) ou nunca rodou.
+ * Sempre usa sequencia=1: reenviar o mesmo número de sequência de evento é
+ * seguro (a SEFAZ rejeita como duplicidade — cStat 573, tratado como
+ * sucesso acima — em vez de duplicar o evento de verdade). Exportada
+ * porque o backfill (src/app/actions/manifestacao.ts) a reusa
+ * diretamente. */
+export async function retentarManifestacao(notaId: string): Promise<boolean> {
+  const nota = await prisma.notaFiscal.findUniqueOrThrow({
+    where: { id: notaId },
+    include: { empresa: true },
+  });
+
+  if (!nota.empresa.certPfxEnc || !nota.empresa.certPasswordEnc) {
+    await prisma.notaFiscal.update({
+      where: { id: notaId },
+      data: { manifestacaoErro: "Empresa sem certificado digital cadastrado." },
+    });
+    return false;
+  }
+
+  let pfx: Buffer;
+  let passphrase: string;
+  let privateKeyPem: string;
+  let certPem: string;
+  try {
+    pfx = decryptBuffer(nota.empresa.certPfxEnc);
+    passphrase = decryptString(nota.empresa.certPasswordEnc);
+    ({ privateKeyPem, certPem } = lerCertificadoPfx(pfx, passphrase));
+  } catch (err) {
+    console.error(`Falha ao carregar certificado da empresa ${nota.empresaId}:`, err);
+    await prisma.notaFiscal.update({
+      where: { id: notaId },
+      data: {
+        manifestacaoErro:
+          "Não foi possível carregar o certificado digital cadastrado (senha incorreta, arquivo corrompido, ou a chave de cifragem do servidor mudou).",
+      },
+    });
+    return false;
+  }
+
+  try {
+    const resultado = await manifestarCienciaOperacao({
+      ambiente: nota.empresa.ambiente as Ambiente,
+      uf: nota.empresa.uf,
+      cnpj: nota.empresa.cnpj,
+      chaveNFe: nota.chaveAcesso,
+      pfx,
+      passphrase,
+      privateKeyPem,
+      certPem,
+      sequencia: 1,
+    });
+    return await processarResultadoManifestacao(nota.chaveAcesso, resultado);
+  } catch (err) {
+    const mensagem = err instanceof Error ? err.message : String(err);
+    console.error(`Falha ao retentar manifestação de ${nota.chaveAcesso}:`, err);
+    await prisma.notaFiscal.update({ where: { id: notaId }, data: { manifestacaoErro: mensagem } });
+    return false;
   }
 }
 

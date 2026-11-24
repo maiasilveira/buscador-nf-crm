@@ -3,7 +3,9 @@ import { requireUser } from "@/lib/auth";
 import { Card, EmptyState, StatusBadge } from "@/components/ui";
 import { SincronizarTodasButton } from "./sincronizar-todas-button";
 import { GerarPdfsRetroativosButton } from "./gerar-pdfs-retroativos-button";
+import { RetentarManifestacoesButton } from "./retentar-manifestacoes-button";
 import { contarPdfsPendentesAction } from "@/app/actions/pdfs";
+import { contarManifestacoesPendentesAction } from "@/app/actions/manifestacao";
 
 export default async function SincronizacaoPage() {
   const usuario = await requireUser();
@@ -14,6 +16,8 @@ export default async function SincronizacaoPage() {
   });
 
   const pdfsPendentes = usuario.role === "ADMIN" ? await contarPdfsPendentesAction() : 0;
+  const manifestacoesPendentes =
+    usuario.role === "ADMIN" ? await contarManifestacoesPendentesAction() : 0;
 
   return (
     <div className="space-y-6">
@@ -28,6 +32,9 @@ export default async function SincronizacaoPage() {
         {usuario.role === "ADMIN" && <SincronizarTodasButton />}
       </div>
 
+      {usuario.role === "ADMIN" && (
+        <RetentarManifestacoesButton pendentesInicial={manifestacoesPendentes} />
+      )}
       {usuario.role === "ADMIN" && <GerarPdfsRetroativosButton pendentesInicial={pdfsPendentes} />}
 
       {logs.length === 0 ? (

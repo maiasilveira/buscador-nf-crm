@@ -44,8 +44,14 @@ export default async function NotaDetalhePage({
         <Row label="Valor total">
           R$ {Number(nota.valorTotal).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
         </Row>
-        <Row label="Manifestada em">
-          {nota.manifestadaEm ? nota.manifestadaEm.toLocaleString("pt-BR") : "Ainda não"}
+        <Row label="Manifestação">
+          {nota.manifestadaEm ? (
+            nota.manifestadaEm.toLocaleString("pt-BR")
+          ) : nota.manifestacaoErro ? (
+            <span className="text-status-critical">Rejeitada pela SEFAZ: {nota.manifestacaoErro}</span>
+          ) : (
+            "Ainda não"
+          )}
         </Row>
         <Row label="Coletada em">{nota.createdAt.toLocaleString("pt-BR")}</Row>
       </Card>
