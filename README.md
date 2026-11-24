@@ -179,15 +179,23 @@ um SOAP Header customizado, por exemplo, foi descartada assim: o próprio
 código da sped-nfe documenta essa classe como obsoleta desde 11/2017 pra
 webservices versão 4.0, e usá-la causaria falha em vez de evitar uma).
 
-**Ainda não confirmado contra uma resposta real da SEFAZ** no momento
-em que este parágrafo foi escrito — mas é a primeira rodada baseada em
-diferença estrutural concreta no conteúdo do XML (não em formatação de
-transporte), encontrada comparando com uma implementação de referência
-real. Se *mesmo assim* a manifestação continuar rejeitada, compare o
-envelope exato gerado aqui com o de uma execução real da sped-nfe
-(instrumentada localmente com um certificado de teste) campo a campo —
-não resta mais nenhuma hipótese plausível sem esse tipo de comparação
-direta.
+**Atualização (quinta rodada)**: corrigir os bugs 4–5 **também não mudou o
+resultado** — mesmo SOAP Fault, idêntico, numa nota diferente. Quatro
+rodadas seguidas sem o sintoma mudar nada é estranho demais pra continuar
+só teorizando: o padrão em si virou o sinal mais importante — significa
+que nenhuma das correções até aqui chegou a alterar o que a SEFAZ
+realmente recebe e processa, o que é mais compatível com algo ainda não
+observado do que com "mais uma hipótese errada".
+
+Em vez de arriscar mais um palpite sem conseguir ver a requisição real,
+`src/lib/sefaz/manifestacao.ts` agora **loga a requisição enviada junto
+com a resposta** (função `resumirEnvelopeParaDebug` — remove só o
+certificado/assinatura em base64, que são ilegíveis e não ajudam em nada
+a depurar; não removem nenhum dado sensível, já que é tudo público dentro
+do evento assinado). Da próxima vez que a manifestação falhar, o campo
+"Manifestação" na página da nota deve mostrar os dois lados — o que foi
+mandado e o que a SEFAZ respondeu — o que permite comparar campo a campo
+contra uma referência real em vez de inferir às cegas.
 
 Pra reprocessar as que já ficaram presas antes dessa correção, tem um botão
 **"Retentar manifestações (N pendentes)"** na tela de Sincronização (só

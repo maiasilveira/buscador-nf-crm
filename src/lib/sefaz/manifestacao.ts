@@ -166,6 +166,17 @@ function montarEnvelope(eventoAssinado: string): string {
 </soap:Envelope>`;
 }
 
+/** Remove o conteúdo pesado (certificado/assinatura em base64) do envelope
+ * pra poder logar/mostrar a requisição real sem virar um blob ilegível de
+ * milhares de caracteres. Nada aqui é segredo — é só a assinatura de um
+ * evento público, não a chave privada nem a senha do certificado. */
+function resumirEnvelopeParaDebug(envelope: string): string {
+  return envelope
+    .replace(/<X509Certificate>[^<]*<\/X509Certificate>/, "<X509Certificate>[omitido]</X509Certificate>")
+    .replace(/<SignatureValue>[^<]*<\/SignatureValue>/, "<SignatureValue>[omitido]</SignatureValue>")
+    .replace(/<DigestValue>[^<]*<\/DigestValue>/, "<DigestValue>[omitido]</DigestValue>");
+}
+
 function postSoap(params: {
   url: string;
   envelope: string;
@@ -201,7 +212,16 @@ function postSoap(params: {
         res.on("end", () => {
           const body = Buffer.concat(chunks).toString("utf8");
           if ((res.statusCode ?? 0) >= 400) {
-            reject(new Error(`SEFAZ respondeu ${res.statusCode}: ${body.slice(0, 500)}`));
+            // Inclui a URL e o envelope que REALMENTE foi enviado (sem o
+            // blob do certificado) — depois de 4 rodadas de depuração sem
+            // conseguir mudar esse mesmo erro, o próximo passo é comparar a
+            // requisição de verdade contra uma referência, não mais
+            // teorizar sobre o que "deveria" estar sendo enviado.
+            reject(
+              new Error(
+                `SEFAZ respondeu ${res.statusCode} em ${params.url}: ${body.slice(0, 500)} | Requisição enviada: ${resumirEnvelopeParaDebug(params.envelope)}`
+              )
+            );
             return;
           }
           resolve(body);
