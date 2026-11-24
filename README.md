@@ -175,6 +175,20 @@ SEFAZ**. Se a manifestação continuar falhando mesmo com o endpoint
 corrigido, o próximo suspeito é o envelope/assinatura XML em
 `manifestacao.ts`, igual avisado desde o início.
 
+**Atualização (terceira rodada, mesmo dia)**: corrigir o endpoint **não
+resolveu** — o deploy foi confirmado ativo e o mesmo SOAP Fault voltou
+idêntico, caractere por caractere. Esse texto de erro é o padrão do
+WCF/ASMX do .NET quando a action não é reconhecida onde o serviço procura
+— o `action` embutido no `Content-Type` (único que mandávamos) é convenção
+SOAP 1.2, mas alguns serviços ASMX mais antigos só reconhecem o header
+HTTP `SOAPAction` clássico (SOAP 1.1), que nunca estava sendo enviado.
+Adicionado também esse header (seguro, é só mais informação, não troca
+nada do que já existia). **Ainda não confirmado contra uma resposta real
+da SEFAZ.** Esse webservice específico nunca foi testado contra produção
+antes desta sessão de depuração — se essa tentativa também não resolver,
+os próximos suspeitos são o `SOAP_ACTION` em si (relatos de terceiros
+mostram esse valor variando por UF/ambiente) ou o envelope/assinatura XML.
+
 Pra reprocessar as que já ficaram presas antes dessa correção, tem um botão
 **"Retentar manifestações (N pendentes)"** na tela de Sincronização (só
 ADMIN) — reenvia a manifestação pras NF-e com `status: "RESUMO"`, em lotes

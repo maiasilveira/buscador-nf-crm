@@ -25,10 +25,20 @@ import { UF_CODES } from "@/lib/types";
 //
 // Confirmado via busca (não via fetch direto — bloqueado pela política de
 // rede do ambiente de desenvolvimento) do conteúdo oficial de
-// www.nfe.fazenda.gov.br/portal/webservices.aspx — ainda **não confirmado
-// contra uma resposta real da SEFAZ** nesta sessão. Se a manifestação
-// continuar falhando mesmo com o endpoint corrigido, o próximo suspeito é
-// o envelope/assinatura XML abaixo.
+// www.nfe.fazenda.gov.br/portal/webservices.aspx.
+//
+// ⚠️ Segunda rodada (mesmo dia): corrigir o endpoint NÃO resolveu — o
+// mesmo SOAP Fault "action not recognized" voltou idêntico, com o deploy
+// já confirmado ativo. Adicionado também o header HTTP `SOAPAction`
+// separado (ver postSoap abaixo): esse texto de erro é o padrão do
+// WCF/ASMX do .NET quando o dispatcher não acha a action onde procura —
+// o `action` embutido no Content-Type é convenção SOAP 1.2, mas alguns
+// serviços ASMX mais antigos só reconhecem o header SOAPAction clássico
+// (SOAP 1.1), que nunca era enviado. Mandar os dois é seguro (aditivo).
+// AINDA NÃO CONFIRMADO contra uma resposta real da SEFAZ. Se continuar
+// falhando mesmo assim, o próximo suspeito é o envelope/assinatura XML
+// abaixo, ou o SOAP_ACTION abaixo estar simplesmente errado pra essa UF/
+// ambiente (relatos de terceiros mostram esse valor variando por estado).
 
 const ENDPOINTS = {
   PRODUCAO: "https://www.nfe.fazenda.gov.br/NFeRecepcaoEvento4/NFeRecepcaoEvento4.asmx",
@@ -157,6 +167,15 @@ function postSoap(params: {
         headers: {
           "Content-Type":
             'application/soap+xml; charset=utf-8; action="' + SOAP_ACTION + '"',
+          // A mensagem de erro real ("Unable to handle request. The action
+          // '...' was not recognized") é o texto padrão do WCF/ASMX do .NET
+          // quando o dispatcher não acha a action onde procura. O `action`
+          // dentro do Content-Type (acima) é a convenção SOAP 1.2; alguns
+          // serviços ASMX mais antigos (ou configurados pra SOAP 1.1) só
+          // olham pro header HTTP `SOAPAction` separado — que nunca
+          // mandávamos. Enviar os dois ao mesmo tempo é seguro (aditivo) e
+          // cobre qualquer um dos dois que o serviço realmente espere.
+          SOAPAction: `"${SOAP_ACTION}"`,
           "Content-Length": Buffer.byteLength(params.envelope),
         },
         timeout: 30_000,
