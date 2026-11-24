@@ -8,11 +8,15 @@
 // o comportamento não-bloqueante em src/lib/clickup.ts).
 //
 // Os tipos e o formato de `type_config` seguem a API v2 do ClickUp
-// ("Create List Field" / `POST /list/{list_id}/field`). Os 9 campos abaixo
+// ("Create List Field" / `POST /list/{list_id}/field`). Os 9 campos originais
 // foram criados manualmente na lista real e conferidos via
 // clickup_get_custom_fields — nomes e opções batem exatamente. Uma
 // diferença encontrada nessa conferência: o campo "Texto" da UI do ClickUp
 // vira o tipo `short_text` na API (não `text`) — corrigido abaixo.
+//
+// "Número do Pedido" (2026-11) ainda não foi criado na lista real — rode
+// `npm run clickup:setup-fields` (idempotente, só cria o que falta) depois
+// de configurar CLICKUP_API_TOKEN/CLICKUP_LIST_ID no ambiente de produção.
 
 export type TipoCampoClickUp = "drop_down" | "short_text" | "currency" | "date";
 
@@ -33,6 +37,7 @@ export const CAMPOS_CLICKUP: CampoClickUp[] = [
   { name: "CNPJ da Empresa (destinatário/tomador)", type: "short_text" },
   { name: "Chave de Acesso", type: "short_text" },
   { name: "Número do Documento", type: "short_text" },
+  { name: "Número do Pedido", type: "short_text" },
   { name: "Valor", type: "currency" },
   { name: "Data de Emissão", type: "date" },
   {

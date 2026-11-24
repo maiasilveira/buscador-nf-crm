@@ -6,6 +6,7 @@ import { parseNfse, type NotaServicoResumida } from "@/lib/nfse/parse";
 import { parseNfseDanfse } from "@/lib/nfse/parse-danfse";
 import { gerarDanfsePdf } from "@/lib/pdf/danfse";
 import { anexarPdfNaTarefa, atualizarCampoTextoTarefa, criarTarefaNotaServico } from "@/lib/clickup";
+import { extrairNumeroPedido } from "@/lib/numero-pedido";
 
 const MAX_PAGINAS_POR_SYNC = 20;
 
@@ -161,13 +162,16 @@ async function upsertNotaServico(
  * é o que o backfill retroativo usa pra saber quais notas processar.
  * Exportada porque o backfill a reusa diretamente.
  *
- * Também reenvia "Razão Social Emitente/Prestador" pro ClickUp a partir do
- * mesmo parsing usado no PDF — criarTarefaNotaServico já preenche esse
- * campo na criação da tarefa, mas essa chamada aqui é o que corrige
- * tarefas antigas quando o parser é ajustado depois (ex.: bug de 2026-09
- * em que o nome do prestador vinha vazio — ver src/lib/nfse/parse-danfse.ts
- * e o backfill em src/app/actions/pdfs.ts). Nunca falha a função por causa
- * disso: só o anexo do PDF marca `pdfAnexado`. */
+ * Também reenvia "Razão Social Emitente/Prestador" e "Número do Pedido" pro
+ * ClickUp a partir do mesmo parsing usado no PDF — criarTarefaNotaServico já
+ * preenche o primeiro na criação da tarefa, mas essa chamada aqui é o que
+ * corrige tarefas antigas quando o parser é ajustado depois (ex.: bug de
+ * 2026-09 em que o nome do prestador vinha vazio — ver
+ * src/lib/nfse/parse-danfse.ts e o backfill em src/app/actions/pdfs.ts), e é
+ * a única fonte do número do pedido (extraído de "Informações
+ * Complementares" via src/lib/numero-pedido.ts — não existe em nenhum outro
+ * parser). Nunca falha a função por causa disso: só o anexo do PDF marca
+ * `pdfAnexado`. */
 export async function anexarDanfseSeDisponivel(
   notaId: string,
   taskId: string,
@@ -185,7 +189,13 @@ export async function anexarDanfseSeDisponivel(
         }
       );
     }
-    await prisma.notaServico.update({ where: { id: notaId }, data: { pdfAnexado: true } });
+    const numeroPedido = extrairNumeroPedido(dados.informacoesComplementares);
+    if (numeroPedido) {
+      await atualizarCampoTextoTarefa(taskId, "Número do Pedido", numeroPedido).catch((err) => {
+        console.error(`Falha ao atualizar Número do Pedido na tarefa ${taskId}:`, err);
+      });
+    }
+    await prisma.notaServico.update({ where: { id: notaId }, data: { pdfAnexado: true, numeroPedido } });
     return true;
   } catch (err) {
     console.error(`Falha ao gerar/anexar DANFSe da nota ${chaveAcesso}:`, err);

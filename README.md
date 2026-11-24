@@ -215,15 +215,42 @@ ordenada por "Valor"). Catálogo completo em `src/lib/clickup-fields.ts`:
 | CNPJ da Empresa (destinatário/tomador) | Texto | a empresa cadastrada no app |
 | Chave de Acesso | Texto | — |
 | Número do Documento | Texto | número (+ série, na NF-e) |
+| Número do Pedido | Texto | extraído automaticamente, veja abaixo |
 | Valor | Moeda (BRL) | valor total / valor do serviço |
 | Data de Emissão | Data | — |
 | Status de Coleta | Dropdown (Resumo / XML completo / NFS-e) | só relevante pra NF-e |
 
-**Esses campos precisam existir na lista antes de serem preenchidos.** Já
-foram criados manualmente na lista "App Coleta NF" e conferidos contra o
-catálogo (nomes e opções de dropdown batendo exatamente) — não precisa
-fazer nada agora. Se precisar recriar algum campo no futuro (lista nova,
-campo apagado por engano), tem duas formas:
+### Número do Pedido (conferência contra compra aprovada)
+
+Convenção interna: pede-se ao fornecedor que inclua, no campo observações/
+informações complementares da nota, o número do pedido de compra que ela
+atende — assim dá pra conferir rapidinho, em caso de dúvida, se a nota bate
+com uma contratação/compra já aprovada. O app extrai esse número
+automaticamente de "Informações Complementares" (`infAdic/infCpl` na NF-e,
+`infCpl` na NFS-e) com um regex tolerante a variação de formatação entre
+fornecedores — `src/lib/numero-pedido.ts`, validado em 2026-11 contra 3
+DANFEs reais:
+
+```
+Pedido de Compra N: 000335
+PEDIDO DE COMPRA: 000587;DADOS BANCARIOS: ...
+PEDIDO 000026 [ VR.APROX.TRIBUTOS ...
+```
+
+Também reconhece "Ordem de Compra"/"OC" como sinônimo. Se o texto não bater
+com nenhum padrão conhecido, o campo fica em branco — não é preenchido com
+lixo. A extração só roda quando o XML completo chega (nunca a partir do
+resumo/resNFe, que não carrega esse texto), dentro de
+`anexarDanfeSeDisponivel`/`anexarDanfseSeDisponivel`
+(`src/lib/sefaz/sync.ts` / `src/lib/nfse/sync.ts`) — então o botão "Gerar
+PDFs" (backfill retroativo, ver seção de PDF acima) também extrai/corrige o
+Número do Pedido de notas já coletadas, não só o PDF.
+
+**Esses campos precisam existir na lista antes de serem preenchidos.** Os
+campos originais já foram criados manualmente na lista "App Coleta NF" e
+conferidos contra o catálogo — "Número do Pedido" é novo e ainda **não**
+foi criado lá; rode o script abaixo uma vez. Se precisar recriar algum
+campo no futuro (lista nova, campo apagado por engano), tem duas formas:
 
 - Manualmente na UI do ClickUp, seguindo a tabela acima à risca (nome
   exato, incluindo acentos/parênteses — é por esse nome que o app resolve

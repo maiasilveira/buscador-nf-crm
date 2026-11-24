@@ -10,9 +10,11 @@ import { gerarDanfePdf } from "@/lib/pdf/danfe";
 import {
   anexarPdfNaTarefa,
   anexarXmlNaTarefa,
+  atualizarCampoTextoTarefa,
   criarTarefaNotaFiscal,
   marcarStatusColetaCompleta,
 } from "@/lib/clickup";
+import { extrairNumeroPedido } from "@/lib/numero-pedido";
 import type { Ambiente } from "@/lib/types";
 
 const MAX_PAGINAS_POR_SYNC = 20; // trava de segurança contra loop infinito por rodada
@@ -335,7 +337,12 @@ async function criarTarefaClickUpParaNota(
  * criada permaneça válida. Marca `pdfAnexado` só depois do anexo ter dado
  * certo — é o que o backfill retroativo (gerarPdfsRetroativosAction) usa
  * pra saber quais notas ainda não têm o PDF. Exportada porque o backfill a
- * reusa diretamente. */
+ * reusa diretamente.
+ *
+ * Também extrai e envia "Número do Pedido" pro ClickUp a partir de
+ * "Informações Complementares" (src/lib/numero-pedido.ts) — só disponível
+ * aqui porque só o XML completo (infAdic/infCpl) carrega esse texto; o
+ * resumo (resNFe) não tem. Nunca falha a função por causa disso. */
 export async function anexarDanfeSeDisponivel(
   notaId: string,
   taskId: string,
@@ -346,7 +353,16 @@ export async function anexarDanfeSeDisponivel(
     const dados = parseProcNFeDanfe(xmlCompleto);
     const pdf = await gerarDanfePdf(dados);
     await anexarPdfNaTarefa(taskId, `DANFE-${chaveAcesso}.pdf`, pdf);
-    await prisma.notaFiscal.update({ where: { id: notaId }, data: { pdfAnexado: true } });
+    const numeroPedido = extrairNumeroPedido(dados.informacoesComplementares);
+    if (numeroPedido) {
+      await atualizarCampoTextoTarefa(taskId, "Número do Pedido", numeroPedido).catch((err) => {
+        console.error(`Falha ao atualizar Número do Pedido na tarefa ${taskId}:`, err);
+      });
+    }
+    await prisma.notaFiscal.update({
+      where: { id: notaId },
+      data: { pdfAnexado: true, numeroPedido },
+    });
     return true;
   } catch (err) {
     console.error(`Falha ao gerar/anexar DANFE da nota ${chaveAcesso}:`, err);

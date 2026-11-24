@@ -138,6 +138,12 @@ model NotaFiscal {
   // execução. Só é setado true depois de um anexo bem-sucedido.
   pdfAnexado Boolean @default(false)
 
+  // Número do pedido de compra, extraído do campo "Informações
+  // Complementares" do XML (src/lib/numero-pedido.ts) — convenção interna
+  // pra vincular a nota a uma contratação/compra aprovada. null quando o
+  // texto não bate com nenhum padrão conhecido.
+  numeroPedido String?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -174,6 +180,9 @@ model NotaServico {
   // Mesmo motivo do campo equivalente em NotaFiscal — evita reanexar
   // DANFSe duplicado no backfill retroativo.
   pdfAnexado Boolean @default(false)
+
+  // Mesmo campo/motivo que em NotaFiscal — ver lá.
+  numeroPedido String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
