@@ -9,14 +9,29 @@ import { UF_CODES } from "@/lib/types";
 // de uma nota fiscal via Distribuição DFe: antes disso só o resumo (resNFe)
 // fica disponível.
 //
-// Enviado ao webservice nacional de Recepção de Evento. Assim como o
-// cliente de distribuição (client.ts), esta implementação segue a
-// especificação oficial mas não foi validada contra o ambiente real da
-// SEFAZ nesta sessão — revise com um certificado de teste antes de operar
-// em produção.
+// Enviado ao webservice nacional de Recepção de Evento.
+//
+// ⚠️ Bug corrigido em 2026-11, encontrado em produção: o endpoint de
+// produção estava em `www1.nfe.fazenda.gov.br` — copiado do padrão usado
+// pela Distribuição DFe (client.ts), que de fato mora em `www1`. Mas a
+// NFeRecepcaoEvento4 tem seu próprio subdomínio oficial, **sem** o "1"
+// (`www.nfe.fazenda.gov.br`) — cada webservice do Ambiente Nacional tem o
+// seu, não é um padrão único. O sintoma real: toda manifestação de
+// ciência batia um SOAP Fault de transporte ("Unable to handle request.
+// The action '...' was not recognized"), nunca chegando a processar o
+// evento — por isso nenhuma NF-e nunca saía de "Resumo" (ver
+// processarResultadoManifestacao em src/lib/sefaz/sync.ts). Endpoint de
+// homologação (`hom1...`) já estava correto, sem mudança.
+//
+// Confirmado via busca (não via fetch direto — bloqueado pela política de
+// rede do ambiente de desenvolvimento) do conteúdo oficial de
+// www.nfe.fazenda.gov.br/portal/webservices.aspx — ainda **não confirmado
+// contra uma resposta real da SEFAZ** nesta sessão. Se a manifestação
+// continuar falhando mesmo com o endpoint corrigido, o próximo suspeito é
+// o envelope/assinatura XML abaixo.
 
 const ENDPOINTS = {
-  PRODUCAO: "https://www1.nfe.fazenda.gov.br/NFeRecepcaoEvento4/NFeRecepcaoEvento4.asmx",
+  PRODUCAO: "https://www.nfe.fazenda.gov.br/NFeRecepcaoEvento4/NFeRecepcaoEvento4.asmx",
   HOMOLOGACAO:
     "https://hom1.nfe.fazenda.gov.br/NFeRecepcaoEvento4/NFeRecepcaoEvento4.asmx",
 } as const;

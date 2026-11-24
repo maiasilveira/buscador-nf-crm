@@ -157,6 +157,24 @@ qualquer forma. Qualquer outra rejeição agora fica visível em
 `NotaFiscal.manifestacaoErro` — exibido na página da nota (seção
 "Manifestação") em vez de ficar só no log do servidor.
 
+**Atualização (mesmo dia, depois de clicar no botão em produção)**: com o
+erro agora visível, apareceu o motivo real — não era rejeição de cStat,
+era um **SOAP Fault de transporte**: `"Unable to handle request. The
+action '...' was not recognized"`. A requisição nem chegava a ser
+processada como evento fiscal. Causa: `src/lib/sefaz/manifestacao.ts`
+apontava pro endpoint de produção errado — `www1.nfe.fazenda.gov.br`,
+copiado do padrão usado pela Distribuição DFe (`client.ts`), que de fato
+mora em `www1`. Mas a `NFeRecepcaoEvento4` tem seu **próprio** subdomínio
+oficial, sem o "1" (`www.nfe.fazenda.gov.br`) — cada webservice do
+Ambiente Nacional tem o seu, não é um padrão único. Corrigido (endpoint de
+homologação, em `hom1...`, já estava certo). Confirmado via busca do
+conteúdo oficial de `www.nfe.fazenda.gov.br/portal/webservices.aspx` (o
+fetch direto é bloqueado pela política de rede do ambiente de
+desenvolvimento) — **ainda não confirmado contra uma resposta real da
+SEFAZ**. Se a manifestação continuar falhando mesmo com o endpoint
+corrigido, o próximo suspeito é o envelope/assinatura XML em
+`manifestacao.ts`, igual avisado desde o início.
+
 Pra reprocessar as que já ficaram presas antes dessa correção, tem um botão
 **"Retentar manifestações (N pendentes)"** na tela de Sincronização (só
 ADMIN) — reenvia a manifestação pras NF-e com `status: "RESUMO"`, em lotes
