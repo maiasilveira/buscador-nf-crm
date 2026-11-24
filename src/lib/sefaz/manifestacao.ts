@@ -5,57 +5,41 @@ import { XMLParser } from "fast-xml-parser";
 import { UF_CODES } from "@/lib/types";
 
 // Manifestação do Destinatário — evento "Ciência da Operação" (tpEvento
-// 210200). É pré-requisito da SEFAZ para liberar o XML completo (procNFe)
+// 210210). É pré-requisito da SEFAZ para liberar o XML completo (procNFe)
 // de uma nota fiscal via Distribuição DFe: antes disso só o resumo (resNFe)
 // fica disponível.
 //
 // Enviado ao webservice nacional de Recepção de Evento.
 //
-// ⚠️ Bug corrigido em 2026-11, encontrado em produção: o endpoint de
-// produção estava em `www1.nfe.fazenda.gov.br` — copiado do padrão usado
-// pela Distribuição DFe (client.ts), que de fato mora em `www1`. Mas a
-// NFeRecepcaoEvento4 tem seu próprio subdomínio oficial, **sem** o "1"
-// (`www.nfe.fazenda.gov.br`) — cada webservice do Ambiente Nacional tem o
-// seu, não é um padrão único. O sintoma real: toda manifestação de
-// ciência batia um SOAP Fault de transporte ("Unable to handle request.
-// The action '...' was not recognized"), nunca chegando a processar o
-// evento — por isso nenhuma NF-e nunca saía de "Resumo" (ver
-// processarResultadoManifestacao em src/lib/sefaz/sync.ts). Endpoint de
-// homologação (`hom1...`) já estava correto, sem mudança.
+// ⚠️⚠️ HISTÓRICO DE DEPURAÇÃO (2026-11) — produção tinha 32 NF-e presas em
+// "Resumo" pra sempre porque esse módulo nunca funcionou contra a SEFAZ
+// real (nunca tinha sido validado antes). Quatro rodadas até achar as
+// causas de verdade, todas confirmadas pelo mesmo SOAP Fault de transporte
+// idêntico ("Unable to handle request. The action '...' was not
+// recognized") voltando sem mudar, rodada após rodada, até a quarta:
+// 1ª: endpoint de produção errado (`www1...` em vez de `www...` —
+//     corrigido, mas sozinho não resolveu).
+// 2ª: tentativa de header `SOAPAction` separado (hipótese SOAP 1.1) — não
+//     ajudou, revertida.
+// 3ª: `Content-Type` com espaços depois de `;` (devia ser sem) — corrigido
+//     comparando com nfephp-org/sped-nfe (biblioteca PHP madura, usada em
+//     produção por muitos sistemas), mas sozinho também não resolveu.
+// 4ª — **causas reais, confirmadas no código-fonte da sped-nfe**
+//     (`src/Tools.php::sefazEvento`), não em relatos de terceiros:
+//   a) `tpEvento` errado: **210200 é "Confirmação da Operação"**, um
+//      evento totalmente diferente — "Ciência da Operação" é **210210**.
+//   b) Elemento raiz assinado errado: é `<evento>`, não `<eventoNFe>`
+//      (que nunca existiu nesse schema — provável confusão com o `<NFe>`
+//      da própria nota).
+// Essas duas são bugs de conteúdo/schema, não de transporte — explicam
+// por que nenhuma das 3 rodadas anteriores (endpoint, headers,
+// Content-Type) mudava o resultado: a SEFAZ nunca chegava a aceitar a
+// requisição como um evento reconhecível.
 //
-// Confirmado via busca (não via fetch direto — bloqueado pela política de
-// rede do ambiente de desenvolvimento) do conteúdo oficial de
-// www.nfe.fazenda.gov.br/portal/webservices.aspx.
-//
-// ⚠️ Segunda rodada (mesmo dia): corrigir o endpoint NÃO resolveu — o
-// mesmo SOAP Fault "action not recognized" voltou idêntico, com o deploy
-// já confirmado ativo. A tentativa de adicionar um header `SOAPAction`
-// HTTP separado (hipótese SOAP 1.1) também não ajudou e foi revertida.
-//
-// ⚠️ Terceira rodada (mesmo dia): clonado e lido o código-fonte real de
-// nfephp-org/sped-nfe + sped-common (biblioteca PHP open-source madura,
-// usada em produção por muitos sistemas — github.com/nfephp-org), não só
-// fóruns. Dois achados concretos, comparando byte a byte com
-// `SoapCurl.php` (confirmadamente funcional):
-// 1. O `Content-Type` certo **não tem espaço** depois dos `;`:
-//    `application/soap+xml;charset=utf-8;action="..."` — o nosso tinha
-//    `application/soap+xml; charset=utf-8; action="..."` (com espaços).
-//    Corrigido.
-// 2. A hipótese de precisar de um SOAP Header customizado (`nfeCabecMsg`
-//    com cUF/versaoDados) estava **errada** — o próprio código-fonte da
-//    sped-nfe (`src/Factories/Header.php`) diz explicitamente que essa
-//    classe "will no longer exist in version 4.0... becomes OBSOLETE and
-//    if it is used it will cause communication failure" desde 11/2017.
-//    Não é isso.
-// Também alinhado o prefixo do envelope SOAP (`soap`, não `soap12`) e as
-// declarações de namespace, byte a byte iguais à referência.
-//
-// AINDA NÃO CONFIRMADO contra uma resposta real da SEFAZ. Se o Content-Type
-// sem espaços também não resolver, o próximo suspeito é a assinatura XML
-// (xml-crypto) ou algo específico da UF/cUF no evento — nesse caso, vale
-// comparar o envelope exato gerado aqui com o de uma biblioteca madura
-// rodando de verdade (ex.: instrumentar sped-nfe localmente com um
-// certificado de teste e comparar o XML byte a byte).
+// AINDA NÃO CONFIRMADO contra uma resposta real da SEFAZ — mas essa é a
+// primeira rodada baseada em diferença estrutural concreta no conteúdo do
+// XML (não em formatação de transporte), encontrada comparando com uma
+// implementação de referência real.
 
 const ENDPOINTS = {
   PRODUCAO: "https://www.nfe.fazenda.gov.br/NFeRecepcaoEvento4/NFeRecepcaoEvento4.asmx",
@@ -66,7 +50,11 @@ const ENDPOINTS = {
 const SOAP_ACTION =
   "http://www.portalfiscal.inf.br/nfe/wsdl/NFeRecepcaoEvento4/nfeRecepcaoEvento";
 
-const TP_EVENTO_CIENCIA = "210200";
+// ⚠️ "210200" É A CONFIRMAÇÃO DA OPERAÇÃO, NÃO A CIÊNCIA — bug real
+// encontrado comparando com a sped-nfe (src/Tools.php: EVT_CONFIRMACAO =
+// 210200, EVT_CIENCIA = 210210; são dois eventos distintos, cada um com
+// suas próprias regras de negócio na SEFAZ). Corrigido pra 210210.
+const TP_EVENTO_CIENCIA = "210210";
 const DESC_EVENTO_CIENCIA = "Ciencia da Operacao";
 const COD_ORGAO_AN = "91"; // Ambiente Nacional
 
@@ -99,8 +87,13 @@ function montarEventoXmlSemAssinatura(params: {
     "0"
   )}`;
 
+  // ⚠️ O elemento raiz assinado é <evento>, NÃO <eventoNFe> — confirmado
+  // comparando com a sped-nfe (src/Tools.php:sefazEvento,
+  // `$request = "<evento xmlns=\"$this->urlPortal\" versao=\"$this->urlVersion\">"...`).
+  // <eventoNFe> nunca existiu nesse schema; provavelmente uma confusão com
+  // o elemento raiz do XML da própria NF-e (<NFe>), que é diferente.
   const xml =
-    `<eventoNFe xmlns="http://www.portalfiscal.inf.br/nfe" versao="1.00">` +
+    `<evento xmlns="http://www.portalfiscal.inf.br/nfe" versao="1.00">` +
     `<infEvento Id="${id}">` +
     `<cOrgao>${COD_ORGAO_AN}</cOrgao>` +
     `<tpAmb>${tpAmb}</tpAmb>` +
@@ -114,7 +107,7 @@ function montarEventoXmlSemAssinatura(params: {
     `<descEvento>${DESC_EVENTO_CIENCIA}</descEvento>` +
     `</detEvento>` +
     `</infEvento>` +
-    `</eventoNFe>`;
+    `</evento>`;
 
   return { xml, id };
 }

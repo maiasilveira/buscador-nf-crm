@@ -138,75 +138,56 @@ mostra a validade e sinaliza quando um certificado está expirado.
 
 Bug encontrado e corrigido em 2026-11, analisando produção: **32 NF-e
 estavam presas em "Resumo" pra sempre** (XML completo nunca chegava),
-quase todas da mesma empresa. Causa: `src/lib/sefaz/sync.ts` chamava
-`manifestarCienciaOperacao` mas **nunca conferia o retorno** — a função só
-lança exceção em erro de rede/HTTP, uma rejeição da SEFAZ (cStat fora de
-135/136) vem como retorno normal (`sucesso: false`), que o código
-simplesmente ignorava e marcava `manifestadaEm` de qualquer jeito. A nota
-ficava marcada como "manifestada" mesmo quando a SEFAZ rejeitou o evento, e
-nunca mais era re-tentada — sem nenhum sinal visível do motivo real (só ia
-pro log do servidor, inacessível depois).
+quase todas da mesma empresa. O módulo de manifestação
+(`src/lib/sefaz/manifestacao.ts`) nunca tinha sido validado contra a SEFAZ
+real antes dessa depuração, e tinha **cinco bugs empilhados**:
 
-Corrigido: o retorno agora é sempre conferido (`processarResultadoManifestacao`
-em `src/lib/sefaz/sync.ts`), e **cStat 573 ("Duplicidade de Evento") é
-tratado como sucesso** — se a mesma chave já foi manifestada por outro
-sistema (ex.: o Qive, mencionado acima, que consulta o mesmo CNPJ), a
-ciência já está dada perante a SEFAZ independente de quem manifestou, e o
-XML completo deve aparecer numa consulta futura da Distribuição DFe de
-qualquer forma. Qualquer outra rejeição agora fica visível em
-`NotaFiscal.manifestacaoErro` — exibido na página da nota (seção
-"Manifestação") em vez de ficar só no log do servidor.
+1. `src/lib/sefaz/sync.ts` chamava `manifestarCienciaOperacao` mas
+   **nunca conferia o retorno** — uma rejeição da SEFAZ (`sucesso: false`)
+   era tratada como sucesso, `manifestadaEm` era marcado de qualquer
+   jeito, e a nota nunca mais era re-tentada, sem nenhum sinal visível do
+   motivo. Corrigido: o retorno agora é sempre conferido
+   (`processarResultadoManifestacao`), cStat 573 ("Duplicidade de
+   Evento" — já manifestada por outro sistema, ex. o Qive) é tratado como
+   sucesso, e qualquer outra rejeição fica visível em
+   `NotaFiscal.manifestacaoErro` (página da nota, seção "Manifestação").
+2. Endpoint de produção errado: `www1.nfe.fazenda.gov.br` (copiado do
+   padrão da Distribuição DFe) em vez do subdomínio próprio da
+   `NFeRecepcaoEvento4`, **sem** o "1" (`www.nfe.fazenda.gov.br`) — cada
+   webservice do Ambiente Nacional tem o seu.
+3. `Content-Type` com espaço depois dos `;` — devia ser
+   `application/soap+xml;charset=utf-8;action="..."`, sem espaço.
+4. **`tpEvento` errado**: `210200` é "Confirmação da Operação", um evento
+   totalmente diferente — "Ciência da Operação" é **`210210`**.
+5. **Elemento raiz assinado errado**: `<evento>`, não `<eventoNFe>` (que
+   nunca existiu nesse schema).
 
-**Atualização (mesmo dia, depois de clicar no botão em produção)**: com o
-erro agora visível, apareceu o motivo real — não era rejeição de cStat,
-era um **SOAP Fault de transporte**: `"Unable to handle request. The
-action '...' was not recognized"`. A requisição nem chegava a ser
-processada como evento fiscal. Causa: `src/lib/sefaz/manifestacao.ts`
-apontava pro endpoint de produção errado — `www1.nfe.fazenda.gov.br`,
-copiado do padrão usado pela Distribuição DFe (`client.ts`), que de fato
-mora em `www1`. Mas a `NFeRecepcaoEvento4` tem seu **próprio** subdomínio
-oficial, sem o "1" (`www.nfe.fazenda.gov.br`) — cada webservice do
-Ambiente Nacional tem o seu, não é um padrão único. Corrigido (endpoint de
-homologação, em `hom1...`, já estava certo). Confirmado via busca do
-conteúdo oficial de `www.nfe.fazenda.gov.br/portal/webservices.aspx` (o
-fetch direto é bloqueado pela política de rede do ambiente de
-desenvolvimento) — **ainda não confirmado contra uma resposta real da
-SEFAZ**. Se a manifestação continuar falhando mesmo com o endpoint
-corrigido, o próximo suspeito é o envelope/assinatura XML em
-`manifestacao.ts`, igual avisado desde o início.
+Os bugs 1–3 foram corrigidos em rodadas sucessivas (cada uma comprovada
+contra produção) sem mudar o sintoma — o mesmo SOAP Fault de transporte
+("Unable to handle request. The action '...' was not recognized") voltava
+idêntico, caractere por caractere, a cada tentativa. Isso é esperado: 1–3
+eram bugs de transporte/visibilidade (reais, mas não a causa da rejeição
+em si); 4–5 são bugs de **conteúdo/schema** — a SEFAZ nunca chegava a
+reconhecer a requisição como um evento válido, então nada no transporte
+podia mudar o resultado. Os bugs 4 e 5 só foram encontrados comparando
+com o código-fonte de
+[nfephp-org/sped-nfe](https://github.com/nfephp-org/sped-nfe)
+(`src/Tools.php::sefazEvento`) — biblioteca PHP open-source madura, usada
+em produção por muitos sistemas de emissão de NF-e — não em relatos de
+fórum, que até então tinham levado a becos sem saída (a hipótese de faltar
+um SOAP Header customizado, por exemplo, foi descartada assim: o próprio
+código da sped-nfe documenta essa classe como obsoleta desde 11/2017 pra
+webservices versão 4.0, e usá-la causaria falha em vez de evitar uma).
 
-**Atualização (terceira rodada, mesmo dia)**: corrigir o endpoint **não
-resolveu** — o deploy foi confirmado ativo e o mesmo SOAP Fault voltou
-idêntico, caractere por caractere. Esse texto de erro é o padrão do
-WCF/ASMX do .NET quando a action não é reconhecida onde o serviço procura
-— o `action` embutido no `Content-Type` (único que mandávamos) é convenção
-SOAP 1.2, mas alguns serviços ASMX mais antigos só reconhecem o header
-HTTP `SOAPAction` clássico (SOAP 1.1), que nunca estava sendo enviado.
-Adicionado também esse header (seguro, é só mais informação, não troca
-nada do que já existia). **Também não resolveu** — mesmo erro, idêntico.
-
-**Atualização (quarta rodada, mesmo dia)**: em vez de continuar testando
-hipóteses contra fóruns, clonado e lido o código-fonte de
-[nfephp-org/sped-nfe](https://github.com/nfephp-org/sped-nfe) +
-[sped-common](https://github.com/nfephp-org/sped-common) — biblioteca PHP
-open-source madura, usada em produção por muitos sistemas de emissão de
-NF-e. Comparando byte a byte com `SoapCurl.php` (o cliente SOAP real,
-confirmadamente funcional): o `Content-Type` certo **não tem espaço**
-depois dos `;` — `application/soap+xml;charset=utf-8;action="..."` — o
-nosso mandava `application/soap+xml; charset=utf-8; action="..."` (com
-espaços). Corrigido, e revertido o header `SOAPAction` da rodada anterior
-(a referência não usa). Também descartada a hipótese de faltar um SOAP
-Header customizado (`nfeCabecMsg`/cUF): o próprio código-fonte da sped-nfe
-(`Factories/Header.php`) documenta que essa classe está **obsoleta desde
-11/2017** pra webservices versão 4.0 — usá-la causaria falha, não evitaria
-uma. Alinhado também o prefixo do envelope SOAP (`soap`, não `soap12`) e
-as declarações de namespace, iguais à referência.
-
-**Ainda não confirmado contra uma resposta real da SEFAZ** — mas essa é a
-primeira correção baseada em comparação direta com uma implementação real
-e confirmadamente funcional, não em relatos de terceiros. Se ainda assim
-não resolver, o próximo suspeito é a assinatura XML (`xml-crypto`) ou algo
-específico da UF/`cUF` no evento.
+**Ainda não confirmado contra uma resposta real da SEFAZ** no momento
+em que este parágrafo foi escrito — mas é a primeira rodada baseada em
+diferença estrutural concreta no conteúdo do XML (não em formatação de
+transporte), encontrada comparando com uma implementação de referência
+real. Se *mesmo assim* a manifestação continuar rejeitada, compare o
+envelope exato gerado aqui com o de uma execução real da sped-nfe
+(instrumentada localmente com um certificado de teste) campo a campo —
+não resta mais nenhuma hipótese plausível sem esse tipo de comparação
+direta.
 
 Pra reprocessar as que já ficaram presas antes dessa correção, tem um botão
 **"Retentar manifestações (N pendentes)"** na tela de Sincronização (só
