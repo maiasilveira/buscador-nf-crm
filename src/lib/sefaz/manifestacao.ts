@@ -29,16 +29,33 @@ import { UF_CODES } from "@/lib/types";
 //
 // ⚠️ Segunda rodada (mesmo dia): corrigir o endpoint NÃO resolveu — o
 // mesmo SOAP Fault "action not recognized" voltou idêntico, com o deploy
-// já confirmado ativo. Adicionado também o header HTTP `SOAPAction`
-// separado (ver postSoap abaixo): esse texto de erro é o padrão do
-// WCF/ASMX do .NET quando o dispatcher não acha a action onde procura —
-// o `action` embutido no Content-Type é convenção SOAP 1.2, mas alguns
-// serviços ASMX mais antigos só reconhecem o header SOAPAction clássico
-// (SOAP 1.1), que nunca era enviado. Mandar os dois é seguro (aditivo).
-// AINDA NÃO CONFIRMADO contra uma resposta real da SEFAZ. Se continuar
-// falhando mesmo assim, o próximo suspeito é o envelope/assinatura XML
-// abaixo, ou o SOAP_ACTION abaixo estar simplesmente errado pra essa UF/
-// ambiente (relatos de terceiros mostram esse valor variando por estado).
+// já confirmado ativo. A tentativa de adicionar um header `SOAPAction`
+// HTTP separado (hipótese SOAP 1.1) também não ajudou e foi revertida.
+//
+// ⚠️ Terceira rodada (mesmo dia): clonado e lido o código-fonte real de
+// nfephp-org/sped-nfe + sped-common (biblioteca PHP open-source madura,
+// usada em produção por muitos sistemas — github.com/nfephp-org), não só
+// fóruns. Dois achados concretos, comparando byte a byte com
+// `SoapCurl.php` (confirmadamente funcional):
+// 1. O `Content-Type` certo **não tem espaço** depois dos `;`:
+//    `application/soap+xml;charset=utf-8;action="..."` — o nosso tinha
+//    `application/soap+xml; charset=utf-8; action="..."` (com espaços).
+//    Corrigido.
+// 2. A hipótese de precisar de um SOAP Header customizado (`nfeCabecMsg`
+//    com cUF/versaoDados) estava **errada** — o próprio código-fonte da
+//    sped-nfe (`src/Factories/Header.php`) diz explicitamente que essa
+//    classe "will no longer exist in version 4.0... becomes OBSOLETE and
+//    if it is used it will cause communication failure" desde 11/2017.
+//    Não é isso.
+// Também alinhado o prefixo do envelope SOAP (`soap`, não `soap12`) e as
+// declarações de namespace, byte a byte iguais à referência.
+//
+// AINDA NÃO CONFIRMADO contra uma resposta real da SEFAZ. Se o Content-Type
+// sem espaços também não resolver, o próximo suspeito é a assinatura XML
+// (xml-crypto) ou algo específico da UF/cUF no evento — nesse caso, vale
+// comparar o envelope exato gerado aqui com o de uma biblioteca madura
+// rodando de verdade (ex.: instrumentar sped-nfe localmente com um
+// certificado de teste e comparar o XML byte a byte).
 
 const ENDPOINTS = {
   PRODUCAO: "https://www.nfe.fazenda.gov.br/NFeRecepcaoEvento4/NFeRecepcaoEvento4.asmx",
@@ -133,10 +150,17 @@ function assinarEvento(xml: string, privateKeyPem: string, certPem: string): str
   return sig.getSignedXml();
 }
 
+// Prefixo "soap" (não "soap12") e as declarações xsi/xsd, mesmo sem uso
+// direto no corpo — byte a byte igual ao que a sped-common
+// (nfephp-org/sped-common, SoapBase::makeEnvelopeSoap + Tools::$soapnamespaces)
+// manda de verdade pra esse mesmo webservice. O prefixo em si não muda o
+// significado em XML (é só um apelido pro namespace), mas alinhar com uma
+// referência confirmadamente funcional elimina mais uma diferença possível
+// enquanto a causa raiz do "action not recognized" não é confirmada.
 function montarEnvelope(eventoAssinado: string): string {
   return `<?xml version="1.0" encoding="UTF-8"?>
-<soap12:Envelope xmlns:soap12="http://www.w3.org/2003/05/soap-envelope">
-  <soap12:Body>
+<soap:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:soap="http://www.w3.org/2003/05/soap-envelope">
+  <soap:Body>
     <nfeRecepcaoEvento xmlns="http://www.portalfiscal.inf.br/nfe/wsdl/NFeRecepcaoEvento4">
       <nfeDadosMsg>
         <envEvento xmlns="http://www.portalfiscal.inf.br/nfe" versao="1.00">
@@ -145,8 +169,8 @@ function montarEnvelope(eventoAssinado: string): string {
         </envEvento>
       </nfeDadosMsg>
     </nfeRecepcaoEvento>
-  </soap12:Body>
-</soap12:Envelope>`;
+  </soap:Body>
+</soap:Envelope>`;
 }
 
 function postSoap(params: {
@@ -165,17 +189,15 @@ function postSoap(params: {
         pfx: params.pfx,
         passphrase: params.passphrase,
         headers: {
-          "Content-Type":
-            'application/soap+xml; charset=utf-8; action="' + SOAP_ACTION + '"',
-          // A mensagem de erro real ("Unable to handle request. The action
-          // '...' was not recognized") é o texto padrão do WCF/ASMX do .NET
-          // quando o dispatcher não acha a action onde procura. O `action`
-          // dentro do Content-Type (acima) é a convenção SOAP 1.2; alguns
-          // serviços ASMX mais antigos (ou configurados pra SOAP 1.1) só
-          // olham pro header HTTP `SOAPAction` separado — que nunca
-          // mandávamos. Enviar os dois ao mesmo tempo é seguro (aditivo) e
-          // cobre qualquer um dos dois que o serviço realmente espere.
-          SOAPAction: `"${SOAP_ACTION}"`,
+          // SEM espaço depois dos ";" — byte a byte igual ao que a
+          // sped-common (nfephp-org/sped-common, SoapCurl.php), biblioteca
+          // PHP usada em produção por muitos sistemas, manda de verdade:
+          // "application/soap+xml;charset=utf-8;action=\"...\"". O header
+          // SOAPAction separado (SOAP 1.1) que uma rodada anterior desta
+          // depuração tinha adicionado foi removido — a referência
+          // confirmadamente funcional não manda esse header, só este
+          // Content-Type.
+          "Content-Type": `application/soap+xml;charset=utf-8;action="${SOAP_ACTION}"`,
           "Content-Length": Buffer.byteLength(params.envelope),
         },
         timeout: 30_000,

@@ -183,11 +183,30 @@ WCF/ASMX do .NET quando a action não é reconhecida onde o serviço procura
 SOAP 1.2, mas alguns serviços ASMX mais antigos só reconhecem o header
 HTTP `SOAPAction` clássico (SOAP 1.1), que nunca estava sendo enviado.
 Adicionado também esse header (seguro, é só mais informação, não troca
-nada do que já existia). **Ainda não confirmado contra uma resposta real
-da SEFAZ.** Esse webservice específico nunca foi testado contra produção
-antes desta sessão de depuração — se essa tentativa também não resolver,
-os próximos suspeitos são o `SOAP_ACTION` em si (relatos de terceiros
-mostram esse valor variando por UF/ambiente) ou o envelope/assinatura XML.
+nada do que já existia). **Também não resolveu** — mesmo erro, idêntico.
+
+**Atualização (quarta rodada, mesmo dia)**: em vez de continuar testando
+hipóteses contra fóruns, clonado e lido o código-fonte de
+[nfephp-org/sped-nfe](https://github.com/nfephp-org/sped-nfe) +
+[sped-common](https://github.com/nfephp-org/sped-common) — biblioteca PHP
+open-source madura, usada em produção por muitos sistemas de emissão de
+NF-e. Comparando byte a byte com `SoapCurl.php` (o cliente SOAP real,
+confirmadamente funcional): o `Content-Type` certo **não tem espaço**
+depois dos `;` — `application/soap+xml;charset=utf-8;action="..."` — o
+nosso mandava `application/soap+xml; charset=utf-8; action="..."` (com
+espaços). Corrigido, e revertido o header `SOAPAction` da rodada anterior
+(a referência não usa). Também descartada a hipótese de faltar um SOAP
+Header customizado (`nfeCabecMsg`/cUF): o próprio código-fonte da sped-nfe
+(`Factories/Header.php`) documenta que essa classe está **obsoleta desde
+11/2017** pra webservices versão 4.0 — usá-la causaria falha, não evitaria
+uma. Alinhado também o prefixo do envelope SOAP (`soap`, não `soap12`) e
+as declarações de namespace, iguais à referência.
+
+**Ainda não confirmado contra uma resposta real da SEFAZ** — mas essa é a
+primeira correção baseada em comparação direta com uma implementação real
+e confirmadamente funcional, não em relatos de terceiros. Se ainda assim
+não resolver, o próximo suspeito é a assinatura XML (`xml-crypto`) ou algo
+específico da UF/`cUF` no evento.
 
 Pra reprocessar as que já ficaram presas antes dessa correção, tem um botão
 **"Retentar manifestações (N pendentes)"** na tela de Sincronização (só
