@@ -308,20 +308,22 @@ export async function anexarPdfNaTarefa(
   await anexarArquivoNaTarefa(taskId, nomeArquivo, pdf, "application/pdf");
 }
 
-/** Atualiza o campo "Status de Coleta" de uma tarefa já existente para
- * "XML completo" — usado junto com anexarXmlNaTarefa quando o procNFe chega
- * depois da tarefa já ter sido criada a partir do resumo (resNFe). Sem
- * isso, a tarefa fica com o XML completo anexado mas o campo continua
- * mostrando "Resumo" pra sempre. */
-export async function marcarStatusColetaCompleta(taskId: string): Promise<void> {
+/** Atualiza um campo dropdown já existente numa tarefa pra uma das opções
+ * cadastradas (resolve o nome da opção pro UUID que a API espera).
+ * Best-effort: campo ou opção ausente é ignorado silenciosamente. */
+export async function atualizarCampoDropdownTarefa(
+  taskId: string,
+  nomeCampo: string,
+  nomeOpcao: string
+): Promise<void> {
   const fields = await getListFields();
-  const field = findField(fields, "Status de Coleta");
+  const field = findField(fields, nomeCampo);
   if (!field) return; // campo ainda não criado na lista — ignora
 
   const option = field.type_config?.options?.find(
-    (o) => o.name.trim().toLowerCase() === "xml completo"
+    (o) => o.name.trim().toLowerCase() === nomeOpcao.trim().toLowerCase()
   );
-  if (!option) return;
+  if (!option) return; // opção não existe nesse dropdown — ignora
 
   const res = await fetch(`${CLICKUP_API_BASE}/task/${taskId}/field/${field.id}`, {
     method: "POST",
@@ -334,8 +336,17 @@ export async function marcarStatusColetaCompleta(taskId: string): Promise<void> 
 
   if (!res.ok) {
     const body = await res.text().catch(() => "");
-    throw new Error(`Falha ao atualizar Status de Coleta (${res.status}): ${body}`);
+    throw new Error(`Falha ao atualizar campo "${nomeCampo}" (${res.status}): ${body}`);
   }
+}
+
+/** Atualiza o campo "Status de Coleta" de uma tarefa já existente para
+ * "XML completo" — usado junto com anexarXmlNaTarefa quando o procNFe chega
+ * depois da tarefa já ter sido criada a partir do resumo (resNFe). Sem
+ * isso, a tarefa fica com o XML completo anexado mas o campo continua
+ * mostrando "Resumo" pra sempre. */
+export async function marcarStatusColetaCompleta(taskId: string): Promise<void> {
+  await atualizarCampoDropdownTarefa(taskId, "Status de Coleta", "XML completo");
 }
 
 /** Atualiza um campo de texto (short_text) já existente numa tarefa — usado

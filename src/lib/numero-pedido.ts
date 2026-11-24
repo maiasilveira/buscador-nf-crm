@@ -30,3 +30,24 @@ export function extrairNumeroPedido(texto: string | null | undefined): string | 
   }
   return null;
 }
+
+// Mesmas palavras-chave dos padrões acima, mas sem exigir um número junto —
+// usada só pra distinguir "não tem nada a ver com pedido" de "parece
+// mencionar pedido, mas num formato que extrairNumeroPedido não reconhece"
+// (ver classificarStatusPedido).
+const MENCIONA_PEDIDO = /\b(pedido|ordem\s*de\s*compra|o\.?\s*c\.?)\b/i;
+
+export type StatusPedido = "Possui" | "Conferir" | "Não possui";
+
+/** Classifica a nota pro campo "Status do Pedido" (dropdown no ClickUp):
+ * - "Possui": extrairNumeroPedido achou um número com confiança.
+ * - "Conferir": o texto parece mencionar pedido/ordem de compra, mas em
+ *   formato que os padrões conhecidos não capturam — sinal de que pode ser
+ *   uma variante nova do fornecedor, vale revisão manual antes de
+ *   descartar. Nunca inventa um número nesse caso.
+ * - "Não possui": nada que pareça referência a pedido no texto. */
+export function classificarStatusPedido(texto: string | null | undefined): StatusPedido {
+  if (extrairNumeroPedido(texto) !== null) return "Possui";
+  if (texto && MENCIONA_PEDIDO.test(texto)) return "Conferir";
+  return "Não possui";
+}

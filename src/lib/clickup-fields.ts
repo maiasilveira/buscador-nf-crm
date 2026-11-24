@@ -14,9 +14,10 @@
 // diferença encontrada nessa conferência: o campo "Texto" da UI do ClickUp
 // vira o tipo `short_text` na API (não `text`) — corrigido abaixo.
 //
-// "Número do Pedido" (2026-11) ainda não foi criado na lista real — rode
-// `npm run clickup:setup-fields` (idempotente, só cria o que falta) depois
-// de configurar CLICKUP_API_TOKEN/CLICKUP_LIST_ID no ambiente de produção.
+// "Número do Pedido" e "Status do Pedido" (2026-11) ainda não foram criados
+// na lista real — rode `npm run clickup:setup-fields` (idempotente, só cria
+// o que falta) depois de configurar CLICKUP_API_TOKEN/CLICKUP_LIST_ID no
+// ambiente de produção.
 
 export type TipoCampoClickUp = "drop_down" | "short_text" | "currency" | "date";
 
@@ -38,6 +39,11 @@ export const CAMPOS_CLICKUP: CampoClickUp[] = [
   { name: "Chave de Acesso", type: "short_text" },
   { name: "Número do Documento", type: "short_text" },
   { name: "Número do Pedido", type: "short_text" },
+  {
+    name: "Status do Pedido",
+    type: "drop_down",
+    options: ["Possui", "Conferir", "Não possui"],
+  },
   { name: "Valor", type: "currency" },
   { name: "Data de Emissão", type: "date" },
   {

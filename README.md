@@ -216,6 +216,7 @@ ordenada por "Valor"). Catálogo completo em `src/lib/clickup-fields.ts`:
 | Chave de Acesso | Texto | — |
 | Número do Documento | Texto | número (+ série, na NF-e) |
 | Número do Pedido | Texto | extraído automaticamente, veja abaixo |
+| Status do Pedido | Dropdown (Possui / Conferir / Não possui) | classificação automática, veja abaixo |
 | Valor | Moeda (BRL) | valor total / valor do serviço |
 | Data de Emissão | Data | — |
 | Status de Coleta | Dropdown (Resumo / XML completo / NFS-e) | só relevante pra NF-e |
@@ -238,19 +239,33 @@ PEDIDO 000026 [ VR.APROX.TRIBUTOS ...
 ```
 
 Também reconhece "Ordem de Compra"/"OC" como sinônimo. Se o texto não bater
-com nenhum padrão conhecido, o campo fica em branco — não é preenchido com
-lixo. A extração só roda quando o XML completo chega (nunca a partir do
+com nenhum padrão conhecido, o campo "Número do Pedido" fica em branco —
+não é preenchido com lixo.
+
+O dropdown **"Status do Pedido"** classifica cada nota em uma de três
+opções, pra dar pra filtrar/agrupar a lista por quem precisa de atenção:
+
+- **Possui**: o número foi extraído com confiança (os casos acima).
+- **Conferir**: o texto parece mencionar "pedido"/"ordem de compra"/"OC",
+  mas num formato que o regex não reconhece — pode ser uma variante nova
+  de algum fornecedor. Revisão manual antes de assumir que não tem pedido.
+- **Não possui**: nenhuma menção a pedido no texto.
+
+A extração só roda quando o XML completo chega (nunca a partir do
 resumo/resNFe, que não carrega esse texto), dentro de
 `anexarDanfeSeDisponivel`/`anexarDanfseSeDisponivel`
 (`src/lib/sefaz/sync.ts` / `src/lib/nfse/sync.ts`) — então o botão "Gerar
-PDFs" (backfill retroativo, ver seção de PDF acima) também extrai/corrige o
-Número do Pedido de notas já coletadas, não só o PDF.
+PDFs" (backfill retroativo, ver seção de PDF acima) também extrai/corrige
+os dois campos de notas já coletadas, não só o PDF. Se um fornecedor
+aparecer como "Conferir" com frequência, mande o texto real de observações
+pra calibrar o regex (`src/lib/numero-pedido.ts`) com o formato dele.
 
 **Esses campos precisam existir na lista antes de serem preenchidos.** Os
 campos originais já foram criados manualmente na lista "App Coleta NF" e
-conferidos contra o catálogo — "Número do Pedido" é novo e ainda **não**
-foi criado lá; rode o script abaixo uma vez. Se precisar recriar algum
-campo no futuro (lista nova, campo apagado por engano), tem duas formas:
+conferidos contra o catálogo — "Número do Pedido" e "Status do Pedido" são
+novos e ainda **não** foram criados lá; rode o script abaixo uma vez. Se
+precisar recriar algum campo no futuro (lista nova, campo apagado por
+engano), tem duas formas:
 
 - Manualmente na UI do ClickUp, seguindo a tabela acima à risca (nome
   exato, incluindo acentos/parênteses — é por esse nome que o app resolve

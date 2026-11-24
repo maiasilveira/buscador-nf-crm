@@ -10,11 +10,12 @@ import { gerarDanfePdf } from "@/lib/pdf/danfe";
 import {
   anexarPdfNaTarefa,
   anexarXmlNaTarefa,
+  atualizarCampoDropdownTarefa,
   atualizarCampoTextoTarefa,
   criarTarefaNotaFiscal,
   marcarStatusColetaCompleta,
 } from "@/lib/clickup";
-import { extrairNumeroPedido } from "@/lib/numero-pedido";
+import { classificarStatusPedido, extrairNumeroPedido } from "@/lib/numero-pedido";
 import type { Ambiente } from "@/lib/types";
 
 const MAX_PAGINAS_POR_SYNC = 20; // trava de segurança contra loop infinito por rodada
@@ -339,10 +340,11 @@ async function criarTarefaClickUpParaNota(
  * pra saber quais notas ainda não têm o PDF. Exportada porque o backfill a
  * reusa diretamente.
  *
- * Também extrai e envia "Número do Pedido" pro ClickUp a partir de
- * "Informações Complementares" (src/lib/numero-pedido.ts) — só disponível
- * aqui porque só o XML completo (infAdic/infCpl) carrega esse texto; o
- * resumo (resNFe) não tem. Nunca falha a função por causa disso. */
+ * Também extrai e envia "Número do Pedido" e "Status do Pedido" pro
+ * ClickUp a partir de "Informações Complementares" (src/lib/numero-pedido.ts)
+ * — só disponível aqui porque só o XML completo (infAdic/infCpl) carrega
+ * esse texto; o resumo (resNFe) não tem. Nunca falha a função por causa
+ * disso. */
 export async function anexarDanfeSeDisponivel(
   notaId: string,
   taskId: string,
@@ -359,6 +361,10 @@ export async function anexarDanfeSeDisponivel(
         console.error(`Falha ao atualizar Número do Pedido na tarefa ${taskId}:`, err);
       });
     }
+    const statusPedido = classificarStatusPedido(dados.informacoesComplementares);
+    await atualizarCampoDropdownTarefa(taskId, "Status do Pedido", statusPedido).catch((err) => {
+      console.error(`Falha ao atualizar Status do Pedido na tarefa ${taskId}:`, err);
+    });
     await prisma.notaFiscal.update({
       where: { id: notaId },
       data: { pdfAnexado: true, numeroPedido },
