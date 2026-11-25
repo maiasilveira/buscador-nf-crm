@@ -56,6 +56,7 @@ export async function sincronizarNfseEmpresa(empresaId: string): Promise<Resulta
     let ultNsu = empresa.ultNsuNfse;
     let maxNsu = empresa.maxNsuNfse;
     let paginas = 0;
+    const documentosIgnorados: string[] = [];
 
     do {
       const resposta = await consultarDistribuicaoNfse({
@@ -65,10 +66,24 @@ export async function sincronizarNfseEmpresa(empresaId: string): Promise<Resulta
         passphrase,
       });
 
+      // Isolado por documento: o ADN manda no mesmo lote qualquer coisa com
+      // `ArquivoXml` preenchido, não só NFS-e completas (ex. eventos,
+      // cancelamentos — o formato completo não é documentado publicamente,
+      // ver o aviso em client.ts). Um documento que `parseNfse` rejeita não
+      // pode derrubar o lote inteiro: antes disso, qualquer erro aqui
+      // abortava a sincronização SEM avançar `ultNsu`, então o próximo cron
+      // tentava o mesmo lote, batia no mesmo documento e travava pra sempre
+      // — nenhuma NFS-e posterior a ele nunca era capturada.
       for (const doc of resposta.documentos) {
-        const resumo = parseNfse(doc.xml);
-        const criada = await upsertNotaServico(empresaId, resumo, doc.xml);
-        if (criada) notasNovas++;
+        try {
+          const resumo = parseNfse(doc.xml);
+          const criada = await upsertNotaServico(empresaId, resumo, doc.xml);
+          if (criada) notasNovas++;
+        } catch (err) {
+          const mensagem = err instanceof Error ? err.message : String(err);
+          console.error(`Ignorando documento NSU ${doc.nsu} da empresa ${empresaId}:`, err);
+          documentosIgnorados.push(`NSU ${doc.nsu}: ${mensagem}`);
+        }
       }
 
       ultNsu = resposta.ultNSU;
@@ -83,7 +98,15 @@ export async function sincronizarNfseEmpresa(empresaId: string): Promise<Resulta
 
     await prisma.syncLog.update({
       where: { id: log.id },
-      data: { status: "SUCESSO", finishedAt: new Date(), notasNovas },
+      data: {
+        status: "SUCESSO",
+        finishedAt: new Date(),
+        notasNovas,
+        mensagem:
+          documentosIgnorados.length > 0
+            ? `${documentosIgnorados.length} documento(s) do lote ignorado(s) (não é uma NFS-e — provavelmente evento/cancelamento)`
+            : null,
+      },
     });
 
     return { empresaId, notasNovas };
