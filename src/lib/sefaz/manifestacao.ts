@@ -217,14 +217,26 @@ function postSoap(params: {
         res.on("end", () => {
           const body = Buffer.concat(chunks).toString("utf8");
           if ((res.statusCode ?? 0) >= 400) {
-            // Inclui a URL e o envelope que REALMENTE foi enviado (sem o
-            // blob do certificado) — depois de 4 rodadas de depuração sem
-            // conseguir mudar esse mesmo erro, o próximo passo é comparar a
-            // requisição de verdade contra uma referência, não mais
-            // teorizar sobre o que "deveria" estar sendo enviado.
+            // 6 rodadas de correções de conteúdo/cabeçalho não mudaram nada
+            // nesse erro — sinal de que a causa pode não estar em nada que
+            // comparação de código consiga achar. Captura o corpo INTEIRO
+            // (não só os primeiros 500 caracteres — pode haver um <detail>
+            // com mais informação depois do texto genérico), todos os
+            // headers da resposta e o estado da conexão mTLS (o
+            // certificado foi de fato aceito pela SEFAZ?), em vez de
+            // arriscar mais uma mudança especulativa no envelope.
+            const socket = res.socket as import("node:tls").TLSSocket;
+            const mtls = {
+              authorized: socket.authorized,
+              authorizationError: socket.authorizationError,
+            };
             reject(
               new Error(
-                `SEFAZ respondeu ${res.statusCode} em ${params.url}: ${body.slice(0, 500)} | Requisição enviada: ${resumirEnvelopeParaDebug(params.envelope)}`
+                `SEFAZ respondeu ${res.statusCode} em ${params.url}\n` +
+                  `Headers da resposta: ${JSON.stringify(res.headers)}\n` +
+                  `mTLS: ${JSON.stringify(mtls)}\n` +
+                  `Corpo completo: ${body}\n` +
+                  `Requisição enviada: ${resumirEnvelopeParaDebug(params.envelope)}`
               )
             );
             return;

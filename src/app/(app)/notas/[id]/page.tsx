@@ -48,7 +48,9 @@ export default async function NotaDetalhePage({
           {nota.manifestadaEm ? (
             nota.manifestadaEm.toLocaleString("pt-BR")
           ) : nota.manifestacaoErro ? (
-            <span className="text-status-critical">Rejeitada pela SEFAZ: {nota.manifestacaoErro}</span>
+            <span className="whitespace-pre-wrap text-status-critical">
+              Rejeitada pela SEFAZ: {nota.manifestacaoErro}
+            </span>
           ) : (
             "Ainda não"
           )}
