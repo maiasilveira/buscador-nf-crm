@@ -62,16 +62,21 @@ function pad2(n: number) {
   return String(n).padStart(2, "0");
 }
 
+// ⚠️ Horário de Brasília fixo (-03:00), NÃO derivado de
+// `Date.getTimezoneOffset()` — esse método reflete o fuso do runtime onde o
+// processo roda (na Vercel, UTC), não o do Brasil. O schema da NFe exige um
+// offset dentro da faixa brasileira (-02:00 a -05:00); "+00:00" é
+// sintaticamente inválido pro tipo `TDateTimeUTC` e pode estar sendo
+// rejeitado antes mesmo de qualquer validação de negócio.
+const BR_UTC_OFFSET = "-03:00";
+
 /** Data/hora no formato exigido pelo schema da NFe: AAAA-MM-DDTHH:mm:ssTZD */
 function dataHoraEvento(): string {
-  const now = new Date();
-  const offsetMin = -now.getTimezoneOffset();
-  const sign = offsetMin >= 0 ? "+" : "-";
-  const abs = Math.abs(offsetMin);
-  const tz = `${sign}${pad2(Math.floor(abs / 60))}:${pad2(abs % 60)}`;
+  const agora = new Date();
+  const brasilia = new Date(agora.getTime() - 3 * 60 * 60 * 1000);
   return (
-    `${now.getFullYear()}-${pad2(now.getMonth() + 1)}-${pad2(now.getDate())}` +
-    `T${pad2(now.getHours())}:${pad2(now.getMinutes())}:${pad2(now.getSeconds())}${tz}`
+    `${brasilia.getUTCFullYear()}-${pad2(brasilia.getUTCMonth() + 1)}-${pad2(brasilia.getUTCDate())}` +
+    `T${pad2(brasilia.getUTCHours())}:${pad2(brasilia.getUTCMinutes())}:${pad2(brasilia.getUTCSeconds())}${BR_UTC_OFFSET}`
   );
 }
 
